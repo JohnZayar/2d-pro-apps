@@ -14,7 +14,12 @@ import re
 import sys
 
 def safe(s):
-    return re.sub(r'[^a-z0-9]', '', s.lower()) or 'app'
+    s = re.sub(r'[^a-z0-9]', '', s.lower()) or 'app'
+    # Java package segments may not start with a digit
+    if s[0].isdigit():
+        s = '_' + s
+    return s
+
 
 def main():
     base_url = sys.argv[1].rstrip('/')
