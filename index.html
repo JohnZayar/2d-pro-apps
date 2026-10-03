@@ -2045,6 +2045,59 @@
             });
         })();
 
+        /* v218.2: state persistence — stay where user left off */
+        function saveAppState() {
+            try {
+                let pasteModal = document.getElementById('pasteModal');
+                let pasteBox = document.getElementById('pasteBox');
+                let limitOv = document.getElementById('limitPopupOverlay');
+                let editOv = document.getElementById('editRecordOverlay');
+                let state = {
+                    page: (typeof currentPageName !== 'undefined' && currentPageName) ? currentPageName : 'Home',
+                    pasteOpen: pasteModal && pasteModal.style.display === 'flex',
+                    pasteText: pasteBox ? pasteBox.value : '',
+                    limitOpen: limitOv && limitOv.style.display === 'flex',
+                    editOpen: editOv && editOv.style.display === 'flex',
+                    ts: Date.now()
+                };
+                localStorage.setItem('2d_app_state_master', JSON.stringify(state));
+            } catch(e) {}
+        }
+        function restoreAppState() {
+            try {
+                let s = JSON.parse(localStorage.getItem('2d_app_state_master') || 'null');
+                if (!s) { switchPage('Home'); return; }
+                /* ignore stale state older than 12 hours */
+                if (Date.now() - (s.ts || 0) > 12*60*60*1000) { switchPage('Home'); return; }
+                if (s.page && typeof switchPage === 'function') {
+                    try { switchPage(s.page); } catch(e) { switchPage('Home'); }
+                } else { switchPage('Home'); }
+                if (s.pasteOpen) {
+                    try {
+                        openPasteModal();
+                        if (s.pasteText) document.getElementById('pasteBox').value = s.pasteText;
+                    } catch(e) {}
+                }
+                /* limit/edit popups: reopen empty (their inputs are quick) */
+                if (s.limitOpen) { try { openLimitPopup(); } catch(e) {} }
+                /* edit popup needs a record id — skip restore, user can long-press again */
+            } catch(e) { try { switchPage('Home'); } catch(err) {} }
+        }
+        /* auto-save state when app goes to background + on textarea input */
+        try {
+            document.addEventListener('visibilitychange', () => {
+                if (document.visibilityState === 'hidden') saveAppState();
+            });
+            window.addEventListener('pagehide', saveAppState);
+        } catch(e) {}
+        /* deferred: attach textarea autosave after DOM ready */
+        setTimeout(() => {
+            try {
+                let pb = document.getElementById('pasteBox');
+                if (pb) pb.addEventListener('input', saveAppState);
+            } catch(e) {}
+        }, 2000);
+
         function renderLedgerGrid() {
             let container = document.getElementById('ledgerGridContainer');
             if(!container) return;
@@ -3085,7 +3138,7 @@
                         updateMainInfoUI();
                         checkDeviceSecurity();
                         setFocusBox('no');
-                        loadCloudData(() => { switchPage('Home'); });
+                        loadCloudData(() => { restoreAppState(); });
                     } else {
                         setTenantId(null);
                         if (overlay) overlay.style.display = 'flex';

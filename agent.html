@@ -1684,6 +1684,45 @@
             try { portalLogout(); } catch(e) {}
             showLinkOverlay('');
         }
+        /* v218.2: state persistence — stay where user left off */
+        function saveAgentState() {
+            try {
+                let boardModal = document.getElementById('digitalBoardModal');
+                let boardBox = document.getElementById('digitalBoardBox');
+                let state = {
+                    boardOpen: boardModal && boardModal.style.display === 'flex',
+                    boardText: boardBox ? boardBox.value : '',
+                    ts: Date.now()
+                };
+                localStorage.setItem('2d_app_state_agent', JSON.stringify(state));
+            } catch(e) {}
+        }
+        function restoreAgentState() {
+            try {
+                let s = JSON.parse(localStorage.getItem('2d_app_state_agent') || 'null');
+                if (!s) return;
+                if (Date.now() - (s.ts || 0) > 12*60*60*1000) return;
+                if (s.boardOpen) {
+                    try {
+                        openDigitalBoard();
+                        if (s.boardText) document.getElementById('digitalBoardBox').value = s.boardText;
+                    } catch(e) {}
+                }
+            } catch(e) {}
+        }
+        try {
+            document.addEventListener('visibilitychange', () => {
+                if (document.visibilityState === 'hidden') saveAgentState();
+            });
+            window.addEventListener('pagehide', saveAgentState);
+        } catch(e) {}
+        setTimeout(() => {
+            try {
+                let db = document.getElementById('digitalBoardBox');
+                if (db) db.addEventListener('input', saveAgentState);
+            } catch(e) {}
+        }, 2000);
+
         function bootAgent() {
             if (__agentBooted) return;
             __agentBooted = true;
@@ -1697,6 +1736,7 @@
                             try { startCloudMonitor(); } catch(e) {}
                             hideLinkOverlay();
                             checkLoginState();
+                            restoreAgentState();
                         } else {
                             setTenantId(null);
                             showLinkOverlay('ချိတ်ဆက်ကုဒ် မမှန်တော့ပါ — ပြန်ထည့်ပါ။');
