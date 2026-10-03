@@ -73,6 +73,12 @@ jobs:
             sleep 10
           done
 
+      - name: Pre-seed Bubblewrap config (skip interactive prompts)
+        run: |
+          mkdir -p ~/.bubblewrap
+          printf '{"jdkPath":"%s","androidSdkPath":"%s"}' "$JAVA_HOME" "$ANDROID_SDK_ROOT" > ~/.bubblewrap/config.json
+          cat ~/.bubblewrap/config.json
+
       - name: Build Master + Agent APKs
         env:
           BUBBLEWRAP_KEYSTORE_PASSWORD: android
@@ -89,18 +95,3 @@ jobs:
             cp android.keystore "twa-build/$app/android.keystore"
             ( cd "twa-build/$app" && bubblewrap build --skipPwaValidation \
                 --signingKeyPath "$PWD/android.keystore" --signingKeyAlias android )
-            apk=$(find "twa-build/$app" -name 'app-release-signed.apk' | head -1)
-            if [ -z "$apk" ]; then echo "APK not found for $app"; find "twa-build/$app" -name '*.apk'; exit 1; fi
-            cp "$apk" "dist/2D-${app^}.apk"
-          done
-          ls -la dist/
-
-      - name: Show keystore SHA-256 (for assetlinks.json full-TWA mode later)
-        run: |
-          keytool -list -v -keystore android.keystore -alias android -storepass android | grep -i "SHA256" || true
-
-      - name: Upload APKs
-        uses: actions/upload-artifact@v4
-        with:
-          name: 2d-apks
-          path: dist/*.apk
