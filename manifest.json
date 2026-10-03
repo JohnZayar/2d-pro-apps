@@ -1,0 +1,21 @@
+{
+  "name": "2D Master & Agent Pro",
+  "short_name": "2D Pro",
+  "description": "2D Master and Agent management app for tracking lists, agents, and payouts.",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#050505",
+  "theme_color": "#121622",
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
