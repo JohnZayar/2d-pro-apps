@@ -1452,7 +1452,7 @@
                                     }
                                 } else {
                                     /* v218.4: "numbers amount r reverseAmount" e.g. "12,13,14 500r100" */
-                                    let spaceRMatchA = cleanLine.match(/^(.+?)\s+(\d+)\s*[rR]\s*(\d+)$/);
+                                    let spaceRMatchA = convertedLine.match(/^(.+?)\s+(\d+)\s*[rR]\s*(\d+)$/);
                                     if (spaceRMatchA) {
                                         let formulaPart = spaceRMatchA[1].trim();
                                         let mainAmt = parseInt(spaceRMatchA[2], 10);
@@ -1470,7 +1470,7 @@
                                         }
                                     } else {
                                     /* v218.6: jammed "formulaAmount r reverseAmount" e.g. "6ထိပ်7000r3000" */
-                                    let jammedRMatchA = cleanLine.match(/^(.+?[^0-9\s,.\-\/])(\d{2,})[rR](\d{2,})$/);
+                                    let jammedRMatchA = convertedLine.match(/^(.+?[^0-9\s,.\-\/])(\d{2,})[rR](\d{2,})$/);
                                     if (jammedRMatchA) {
                                         let formulaPart = jammedRMatchA[1].trim();
                                         let mainAmt = parseInt(jammedRMatchA[2], 10);
@@ -1488,7 +1488,7 @@
                                         }
                                     } else {
                                     /* v218.6: r as amount separator e.g. "4-5-6r1000", "12r500" */
-                                    let rSepMatchA = cleanLine.match(/^(.+?)[rR](\d+)$/);
+                                    let rSepMatchA = convertedLine.match(/^(.+?)[rR](\d+)$/);
                                     if (rSepMatchA) {
                                         let formulaPart = rSepMatchA[1].trim();
                                         let amt = parseInt(rSepMatchA[2], 10);
