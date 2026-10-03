@@ -1164,6 +1164,22 @@
                 for(let i=0; i<=9; i+=2) for(let j=1; j<=9; j+=2) results.push(`${i}${j}`);
             } else if(cleanText.includes('မစုံ')) {
                 for(let i=1; i<=9; i+=2) for(let j=0; j<=9; j+=2) results.push(`${i}${j}`);
+            } else if(cleanText.endsWith('R') || cleanText.endsWith('r')) {
+                /* v218.3: R = reverse (e.g. 12R → 12, 21) */
+                let cleanNo = cleanText.replace(/R|r/g, '').trim();
+                if(cleanNo.length === 2) { results.push(cleanNo, cleanNo[1] + cleanNo[0]); }
+                else if(cleanNo.length === 3) {
+                    let d = cleanNo.split('');
+                    for(let i=0; i<d.length; i++) for(let j=0; j<d.length; j++) {
+                        if(i !== j) results.push(d[i] + d[j]);
+                    }
+                } else if(cleanNo) { results.push(cleanNo); }
+            } else if(cleanText.includes('အပါ') || cleanText.includes('အပတ်')) {
+                /* v218.3: အပါ = wrap digit (e.g. 5ပါ → 50-59, 05-95) */
+                let d = cleanText.replace(/အပါ|အပတ်/g, '').replace(/[^\d]/g, '').slice(-1) || '5';
+                let setN = new Set();
+                for(let i=0; i<=9; i++) { setN.add(`${d}${i}`); setN.add(`${i}${d}`); }
+                results = Array.from(setN);
             } else {
                 let pureDigits = cleanText.replace(/[^\d]/g, '');
                 if(pureDigits.length > 3 && pureDigits.length % 2 === 0 && !cleanText.includes('-') && !cleanText.includes('.') && !cleanText.includes(',')) {
@@ -1268,7 +1284,7 @@
                 }
 
                 let html = '';
-                filtered.slice().reverse().forEach(item => {
+                filtered.slice().forEach(item => {
                     let displayName = item.subUser || 'ကိုယ်တိုင်';
                     html += `<tr class="lp-row" data-rid="${item.id}"><td>${displayName}</td><td><b>${item.no}</b></td><td>${item.amt.toLocaleString()} ကျပ်</td><td style="text-align:center;"><button style="background:none; border:none; color:#f43f5e; cursor:pointer;" onclick="deletePortalItem(${item.id})">🗑️</button></td></tr>`;
                 });
@@ -1324,6 +1340,8 @@
                             let cleanLine = line.trim();
                             if(!cleanLine) return;
                             let convertedLine = convertMyanmarNumbers(cleanLine).replace(/အာ/g, 'r').replace(/ရ/g, 'r');
+                            /* v218.3: support / and , as amount separators (12/500 → 12=500, 12,500 → 12=500) */
+                            convertedLine = convertedLine.replace(/^(.+?)[/,](\d{3,})$/, '$1=$2');
                             let parsedSuccess = false;
 
                             let rMatch = convertedLine.match(/^(.+?)\s*=\s*(\d+)\s*[rR]\s*(\d+)$/);

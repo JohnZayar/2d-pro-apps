@@ -553,7 +553,10 @@
                 <label>Limit ကျော်သွားသည့် ဂဏန်းနှင့် ပမာဏများ</label>
                 <textarea id="overLimitBox" style="width:100%; height:180px; background:#111827; color:#38bdf8; border:1px solid #374151; padding:8px; border-radius:6px; font-weight:bold; resize:none; outline:none;" readonly placeholder="အကျွံစာရင်း မရှိပါ။"></textarea>
             </div>
-            <button class="btn-modal-action" onclick="closeOverLimitModal()">ပိတ်မည်</button>
+            <div style="display:flex; gap:8px;">
+                <button class="btn-modal-action" style="background:#374151; color:#d1d5db;" onclick="copyOverLimit()">Copy</button>
+                <button class="btn-modal-action" onclick="closeOverLimitModal()">ပိတ်မည်</button>
+            </div>
         </div>
     </div>
 
@@ -1484,6 +1487,16 @@
             document.getElementById('overLimitModal').style.display = 'flex';
         }
         function closeOverLimitModal() { document.getElementById('overLimitModal').style.display = 'none'; }
+        /* v218.3: copy over-limit list */
+        function copyOverLimit() {
+            let box = document.getElementById('overLimitBox');
+            let text = box ? box.value : '';
+            if (!text || text.includes('မရှိပါ')) { showMessage("❌ ကူးစရာ စာရင်း မရှိပါ။"); return; }
+            let done = () => showMessage("✅ ကူးယူပြီးပါပြီ။");
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(text).then(done).catch(() => fallbackCopy(text, done));
+            } else { fallbackCopy(text, done); }
+        }
 
         function openLimitModal(sessionId) {
             activeSessionId = Number(sessionId) || activeSessionId || (sessions.length > 0 ? Number(sessions[sessions.length - 1].id) : null);
@@ -1642,7 +1655,7 @@
                 </div>
                 <div style="max-height: 250px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px;">`;
 
-            sessionItems.slice().reverse().forEach(item => {
+            sessionItems.slice().forEach(item => {
                 let isWin = winNum && item.no.trim() === winNum;
                 let rowStyle = isWin ? 'background:rgba(52, 211, 153, 0.25); color:#34d399; font-weight:bold; padding:4px 8px; border-radius:4px;' : 'color:#d1d5db; background:#161b22; padding:4px 8px; border-radius:4px;';
                 let winBadge = isWin ? ' 🎯 [ပေါက်]' : '';
@@ -2528,7 +2541,7 @@
             if(filteredList.length === 0) { tbody.innerHTML = '<tr><td colspan="3" style="text-align:center; color:#6b7280; padding:20px;">အကာစာရင်း မရှိသေးပါ။</td></tr>'; return; }
 
             let html = '';
-            filteredList.slice().reverse().forEach(item => {
+            filteredList.slice().forEach(item => {
                 html += `<tr class="lp-row" data-rid="${Number(item.id)}" data-akan="1"><td><b>${item.no}</b></td><td>${item.amt.toLocaleString()} ကျပ်</td><td style="text-align: center;"><button class="trash-btn" onclick="deleteAkanItem(${Number(item.id)})">🗑️</button></td></tr>`;
             });
             tbody.innerHTML = html;
@@ -2654,6 +2667,8 @@
                 let cleanLine = line.trim();
                 if(!cleanLine) return;
                 let convertedLine = convertMyanmarNumbers(cleanLine).replace(/အာ/g, 'r').replace(/ရ/g, 'r');
+                /* v218.3: support / and , as amount separators (12/500 → 12=500, 12,500 → 12=500) */
+                convertedLine = convertedLine.replace(/^(.+?)[/,](\d{3,})$/, '$1=$2');
                 let parsedSuccess = false;
                 
                 let rMatch = convertedLine.match(/^(.+?)\s*=\s*(\d+)\s*[rR]\s*(\d+)$/);
@@ -2881,7 +2896,7 @@
             if(filteredList.length === 0) { tbody.innerHTML = '<tr><td colspan="3" style="text-align:center; color:#6b7280; padding:20px;">စာရင်း မရှိသေးပါ။</td></tr>'; return; }
 
             let html = '';
-            filteredList.slice().reverse().forEach(item => {
+            filteredList.slice().forEach(item => {
                 html += `<tr class="lp-row" data-rid="${Number(item.id)}" data-akan="0"><td><b>${item.no}</b></td><td>${(item.amt || item.amount).toLocaleString()} ကျပ်</td><td style="text-align: center;"><button class="trash-btn" onclick="deletePosItem(${Number(item.id)})">🗑️</button></td></tr>`;
             });
             tbody.innerHTML = html;
