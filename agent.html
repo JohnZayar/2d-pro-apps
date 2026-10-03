@@ -387,6 +387,18 @@
                 attempt();
             },
             set(key, value, callback) {
+                // Safety net: deduplicate lottery records by (sessionId,target,no,amt,batchNo),
+                // keeping the first occurrence. Prevents double-saves from creating duplicates.
+                if ((key === '2d_list_data' || key === '2d_akan_data') && Array.isArray(value)) {
+                    const seen = new Set();
+                    value = value.filter(item => {
+                        if (!item || typeof item !== 'object') return true;
+                        const sig = [item.sessionId, item.target, item.no, item.amt, item.batchNo].join('|');
+                        if (seen.has(sig)) return false;
+                        seen.add(sig);
+                        return true;
+                    });
+                }
                 const pkey = tp(key);
                 safeSetItem('cache_' + pkey, JSON.stringify(value));
                 const socketUp = (window.__socketOk === true);

@@ -875,6 +875,18 @@
                 attempt();
             },
             set(key, value, callback) {
+                // Safety net: deduplicate lottery records by (sessionId,target,no,amt,batchNo),
+                // keeping the first occurrence. Prevents double-saves from creating duplicates.
+                if ((key === '2d_list_data' || key === '2d_akan_data') && Array.isArray(value)) {
+                    const seen = new Set();
+                    value = value.filter(item => {
+                        if (!item || typeof item !== 'object') return true;
+                        const sig = [item.sessionId, item.target, item.no, item.amt, item.batchNo].join('|');
+                        if (seen.has(sig)) return false;
+                        seen.add(sig);
+                        return true;
+                    });
+                }
                 const pkey = tp(key);
                 safeSetItem('cache_' + pkey, JSON.stringify(value));
                 const socketUp = (window.__socketOk === true);
@@ -1223,7 +1235,7 @@
                 if(currentSession) activeSessionId = Number(currentSession.id);
                 let titleLbl = document.getElementById('sessionTitleLbl');
                 if(titleLbl) titleLbl.innerText = currentSession ? currentSession.name : 'လယ်ဂျာ';
-                try { refreshLedgerDropdown(); } catch(e) {}
+                refreshLedgerDropdown();
                 renderLedgerGrid();
             } else if(pageName === 'Gyinge') {
                 if(topIcons) topIcons.style.display = 'none';
@@ -1252,7 +1264,7 @@
                 if(topIcons) topIcons.style.display = 'flex';
                 if(footerBar) footerBar.style.display = 'flex';
                 if(keypad) keypad.style.display = 'flex';
-                try { refreshAkanDropdown(); } catch(e) {}
+                refreshAkanDropdown();
             }
         }
 
@@ -2148,15 +2160,31 @@
                 let targetKey = document.getElementById('posUserSelect').value;
                 if(!targetKey) { showMessage("❌ ထိုးသား ရွေးချယ်ပါ။"); return; }
 
+                // Deduplicate: skip numbers already saved for this target+session+amount
+                const isDup = (num, amt) => listData.some(item =>
+                    Number(item.sessionId) === Number(activeSessionId) &&
+                    item.target === targetKey &&
+                    String(item.no) === String(num) &&
+                    Number(item.amt) === Number(amt) &&
+                    !item.batchNo
+                );
+                let dupCount = 0;
                 validNums.forEach(num => {
-                    listData.push({ id: Number(Date.now() + Math.random()), sessionId: activeSessionId, no: num, amt: mainAmt, target: targetKey, date: now.toLocaleDateString(), time: timeStr, batchNo: null });
+                    if (!isDup(num, mainAmt)) {
+                        listData.push({ id: Number(Date.now() + Math.random()), sessionId: activeSessionId, no: num, amt: mainAmt, target: targetKey, date: now.toLocaleDateString(), time: timeStr, batchNo: null });
+                    } else { dupCount++; }
                     if((revAmt > 0 || isRPressed) && num.length === 2) {
                         let revNum = num[1] + num[0];
                         if(revNum !== num && !closedNumsList.includes(revNum)) {
-                            listData.push({ id: Number(Date.now() + Math.random() + 1), sessionId: activeSessionId, no: revNum, amt: revAmt, target: targetKey, date: now.toLocaleDateString(), time: timeStr, batchNo: null });
+                            if (!isDup(revNum, revAmt)) {
+                                listData.push({ id: Number(Date.now() + Math.random() + 1), sessionId: activeSessionId, no: revNum, amt: revAmt, target: targetKey, date: now.toLocaleDateString(), time: timeStr, batchNo: null });
+                            } else { dupCount++; }
                         }
                     }
                 });
+                if (dupCount > 0) {
+                    showMessage(`⚠️ ထပ်နေသော ${dupCount} ကွက်ကို ကျော်လိုက်ပါတယ်`);
+                }
                 cloudSync.set(STORAGE_KEY, listData, () => {
                     renderPosTable();
                 });
@@ -2689,11 +2717,11 @@
             else profiles.push({name, type, code, comm, payout, limit});
 
             cloudSync.set('2d_profiles', profiles, (ok) => {
-                try { closeAddUserModal(); } catch(e) {} 
-                try { renderUsersList(); } catch(e) {} 
-                try { refreshBoardDropdown(); } catch(e) {} 
-                try { refreshAkanDropdown(); } catch(e) {} 
-                try { refreshLedgerDropdown(); } catch(e) {} 
+                try { closeAddUserModal(); } catch(e) {}
+                try { renderUsersList(); } catch(e) {}
+                try { refreshBoardDropdown(); } catch(e) {}
+                try { refreshAkanDropdown(); } catch(e) {}
+                try { refreshLedgerDropdown(); } catch(e) {}
                 try { refreshGyingeGrid(); } catch(e) {}
                 if (ok === false) {
                     showMessage("⚠️ ဖုန်းထဲသိမ်းပြီးပြီ၊ Cloud မရောက်သေးပါ — ကွန်နက်ရှင်ကောင်းမှ ပြန်သိမ်းပါ");
@@ -2709,9 +2737,9 @@
                 cloudSync.set('2d_profiles', profiles, () => {
                     renderUsersList(); 
                     refreshBoardDropdown(); 
-                    try { refreshAkanDropdown(); } catch(e) {} 
-                    try { refreshLedgerDropdown(); } catch(e) {} 
-                    try { refreshGyingeGrid(); } catch(e) {}
+                    refreshAkanDropdown(); 
+                    refreshLedgerDropdown(); 
+                    refreshGyingeGrid();
                     showMessage("✅ စာရင်း ဖျက်ပြီးပါပြီ။");
                 });
             });
