@@ -1,0 +1,112 @@
+# Builds two installable Android APKs (Master + Agent) from the PWAs using
+# Google's Bubblewrap (Trusted Web Activity). Runs after every push to main
+# and on demand. Download the APKs from the workflow run's Artifacts.
+#
+# Notes:
+# - These are DEBUG-signed testing builds (not Play Store releases).
+# - The debug keystore is cached between runs so every build keeps the same
+#   signature and installs as an update (no need to uninstall each time).
+# - A TWA opens the site with the full Chrome engine, so Firebase works
+#   exactly like it does in the browser.
+
+name: Build Android APKs
+
+on:
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK path (preinstalled on GitHub runners)
+        run: |
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          ls "$ANDROID_SDK_ROOT"
+          SDKMANAGER=$(find "$ANDROID_SDK_ROOT/cmdline-tools" -name sdkmanager -type f | head -1)
+          echo "sdkmanager at: $SDKMANAGER"
+          dirname "$SDKMANAGER" >> "$GITHUB_PATH"
+          echo "$ANDROID_SDK_ROOT/platform-tools" >> "$GITHUB_PATH"
+          "$SDKMANAGER" --version
+
+      - name: Restore debug keystore (stable signature across builds)
+        id: keystore-cache
+        uses: actions/cache@v4
+        with:
+          path: android.keystore
+          key: twa-debug-keystore-v1
+
+      - name: Generate debug keystore (first run only)
+        if: steps.keystore-cache.outputs.cache-hit != 'true'
+        run: |
+          keytool -genkeypair -keystore android.keystore -alias android \
+            -keyalg RSA -keysize 2048 -validity 10950 \
+            -storepass android -keypass android \
+            -dname "CN=2D Pro Debug, OU=Testing, O=Pho, C=MM"
+
+      - name: Set up Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install Bubblewrap CLI
+        run: npm install -g @bubblewrap/cli
+
+      - name: Wait for GitHub Pages deploy
+        run: |
+          OWNER="${{ github.repository_owner }}"
+          REPO="${{ github.event.repository.name }}"
+          for i in $(seq 1 30); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' "https://${OWNER}.github.io/${REPO}/manifest-master.json" || echo 000)
+            echo "attempt $i: HTTP $code"
+            if [ "$code" = "200" ]; then break; fi
+            sleep 10
+          done
+
+      - name: Pre-seed Bubblewrap config (skip interactive prompts)
+        run: |
+          mkdir -p ~/.bubblewrap
+          printf '{"jdkPath":"%s","androidSdkPath":"%s"}' "$JAVA_HOME" "$ANDROID_SDK_ROOT" > ~/.bubblewrap/config.json
+          cat ~/.bubblewrap/config.json
+
+      - name: Build Master + Agent APKs
+        env:
+          BUBBLEWRAP_KEYSTORE_PASSWORD: android
+          BUBBLEWRAP_KEY_PASSWORD: android
+        run: |
+          set -e
+          OWNER="${{ github.repository_owner }}"
+          REPO="${{ github.event.repository.name }}"
+          BASE="https://${OWNER}.github.io/${REPO}"
+          mkdir -p twa-build/master twa-build/agent dist
+          python3 .github/scripts/make_twa_manifest.py "$BASE" "$OWNER" "$REPO" master > twa-build/master/twa-manifest.json
+          python3 .github/scripts/make_twa_manifest.py "$BASE" "$OWNER" "$REPO" agent  > twa-build/agent/twa-manifest.json
+          for app in master agent; do
+            cp android.keystore "twa-build/$app/android.keystore"
+            ( cd "twa-build/$app" && bubblewrap build --skipPwaValidation \
+                --signingKeyPath "$PWD/android.keystore" --signingKeyAlias android )
+            apk=$(find "twa-build/$app" -name 'app-release-signed.apk' | head -1)
+            if [ -z "$apk" ]; then echo "APK not found for $app"; find "twa-build/$app" -name '*.apk'; exit 1; fi
+            cp "$apk" "dist/2D-${app^}.apk"
+          done
+          ls -la dist/
+
+      - name: Show keystore SHA-256 (for assetlinks.json full-TWA mode later)
+        run: |
+          keytool -list -v -keystore android.keystore -alias android -storepass android | grep -i "SHA256" || true
+
+      - name: Upload APKs
+        uses: actions/upload-artifact@v4
+        with:
+          name: 2d-apks
+          path: dist/*.apk
