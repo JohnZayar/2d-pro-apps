@@ -95,6 +95,8 @@ jobs:
           python3 .github/scripts/make_twa_manifest.py "$BASE" "$OWNER" "$REPO" agent  > twa-build/agent/twa-manifest.json
           for app in master agent; do
             cp android.keystore "twa-build/$app/android.keystore"
+            # Pre-seed manifest checksum so `bubblewrap build` never asks interactively
+            ( cd "twa-build/$app" && sha1sum twa-manifest.json | cut -d' ' -f1 > manifest-checksum.txt )
             ( cd "twa-build/$app" && bubblewrap build --skipPwaValidation \
                 --signingKeyPath "$PWD/android.keystore" --signingKeyAlias android )
             apk=$(find "twa-build/$app" -name 'app-release-signed.apk' | head -1)
