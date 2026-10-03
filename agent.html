@@ -389,13 +389,24 @@
             set(key, value, callback) {
                 const pkey = tp(key);
                 safeSetItem('cache_' + pkey, JSON.stringify(value));
-                if (callback) callback();
                 const socketUp = (window.__socketOk === true);
+                // Report cloud-write result; warn visibly on failure.
+                const finish = (ok) => {
+                    if (callback) { try { callback(!!ok); } catch(e) {} }
+                    if (!ok) {
+                        setTimeout(() => { try { showMessage("⚠️ Cloud မရောက်ပါ — ကွန်နက်ရှင်/အကောင့်စစ်ပြီး ပြန်သိမ်းပါ"); } catch(e) {} }, 400);
+                    }
+                };
                 if (db && socketUp) {
-                    try { db.ref(pkey).set(value).then(() => {}).catch(() => {}); } catch(e) {}
+                    try { db.ref(pkey).set(value).then(() => finish(true)).catch(() => finish(false)); }
+                    catch(e) { finish(false); }
                 } else {
                     if (db) { try { db.ref(pkey).set(value).then(() => {}).catch(() => {}); } catch(e) {} }
-                    restSet(key, value);
+                    let done = false;
+                    try {
+                        restSet(key, value, (ok) => { if (!done) { done = true; finish(!!ok); } });
+                    } catch(e) { if (!done) { done = true; finish(false); } }
+                    setTimeout(() => { if (!done) { done = true; finish(false); } }, 15000);
                 }
             }
         };

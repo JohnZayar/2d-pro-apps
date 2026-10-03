@@ -877,13 +877,25 @@
             set(key, value, callback) {
                 const pkey = tp(key);
                 safeSetItem('cache_' + pkey, JSON.stringify(value));
-                if (callback) callback();
                 const socketUp = (window.__socketOk === true);
+                // Report cloud-write result to the caller AND warn visibly on failure.
+                // (Previously the callback fired before the cloud write, hiding failures.)
+                const finish = (ok) => {
+                    if (callback) { try { callback(!!ok); } catch(e) {} }
+                    if (!ok) {
+                        setTimeout(() => { try { showMessage("⚠️ Cloud မရောက်ပါ — ကွန်နက်ရှင်/အကောင့်စစ်ပြီး ပြန်သိမ်းပါ"); } catch(e) {} }, 400);
+                    }
+                };
                 if (db && socketUp) {
-                    try { db.ref(pkey).set(value).then(() => {}).catch(() => {}); } catch(e) {}
+                    try { db.ref(pkey).set(value).then(() => finish(true)).catch(() => finish(false)); }
+                    catch(e) { finish(false); }
                 } else {
                     if (db) { try { db.ref(pkey).set(value).then(() => {}).catch(() => {}); } catch(e) {} }
-                    restSet(key, value);
+                    let done = false;
+                    try {
+                        restSet(key, value, (ok) => { if (!done) { done = true; finish(!!ok); } });
+                    } catch(e) { if (!done) { done = true; finish(false); } }
+                    setTimeout(() => { if (!done) { done = true; finish(false); } }, 15000);
                 }
             }
         };
@@ -2676,14 +2688,18 @@
             if(editIdx >= 0) profiles[editIdx] = {name, type, code, comm, payout, limit};
             else profiles.push({name, type, code, comm, payout, limit});
 
-            cloudSync.set('2d_profiles', profiles, () => {
+            cloudSync.set('2d_profiles', profiles, (ok) => {
                 closeAddUserModal(); 
                 renderUsersList(); 
                 refreshBoardDropdown(); 
                 refreshAkanDropdown(); 
                 refreshLedgerDropdown(); 
                 refreshGyingeGrid();
-                showMessage("✅ အောင်မြင်စွာ သိမ်းဆည်းပြီးပါပြီ။");
+                if (ok === false) {
+                    showMessage("⚠️ ဖုန်းထဲသိမ်းပြီးပြီ၊ Cloud မရောက်သေးပါ — ကွန်နက်ရှင်ကောင်းမှ ပြန်သိမ်းပါ");
+                } else {
+                    showMessage("✅ အောင်မြင်စွာ သိမ်းဆည်းပြီးပါပြီ။");
+                }
             });
         }
 
