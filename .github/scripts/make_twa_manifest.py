@@ -15,11 +15,11 @@ import sys
 
 def safe(s):
     s = re.sub(r'[^a-z0-9]', '', s.lower()) or 'app'
-    # Java package segments may not start with a digit
-    if s[0].isdigit():
-        s = '_' + s
+    # Android package segments must start with a LETTER (aapt2 rejects
+    # digit- or underscore-leading segments), so prefix with 'a'.
+    if not s[0].isalpha():
+        s = 'a' + s
     return s
-
 
 def main():
     base_url = sys.argv[1].rstrip('/')
