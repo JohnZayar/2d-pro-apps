@@ -1110,7 +1110,7 @@
 
         function expandFormulaAdvanced(fullText) {
             let cleanText = convertMyanmarNumbers(fullText).trim().normalize("NFC");
-            cleanText = cleanText.replace(/အာ/g, 'r').replace(/ရ/g, 'r');
+            cleanText = cleanText.replace(/အာ/g, 'r').replace(/ရ/g, 'r').replace(/@/g, 'r');
             let results = [];
 
             /* v218.4: ခွေ+ပူး combo (e.g. 34567ခွေအပူးပါ → all pairs incl. doubles) */
@@ -1348,7 +1348,7 @@
                         lines.forEach(line => {
                             let cleanLine = line.trim();
                             if(!cleanLine) return;
-                            let convertedLine = convertMyanmarNumbers(cleanLine).replace(/အာ/g, 'r').replace(/ရ/g, 'r');
+                            let convertedLine = convertMyanmarNumbers(cleanLine).replace(/အာ/g, 'r').replace(/ရ/g, 'r').replace(/@/g, 'r');
                             /* v218.3: support / and , as amount separators (12/500 → 12=500, 12,500 → 12=500) */
                             convertedLine = convertedLine.replace(/^(.+?)[/,](\d{3,})$/, '$1=$2');
                             let parsedSuccess = false;
