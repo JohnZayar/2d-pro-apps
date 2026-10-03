@@ -1223,7 +1223,7 @@
                 if(currentSession) activeSessionId = Number(currentSession.id);
                 let titleLbl = document.getElementById('sessionTitleLbl');
                 if(titleLbl) titleLbl.innerText = currentSession ? currentSession.name : 'လယ်ဂျာ';
-                refreshLedgerDropdown();
+                try { refreshLedgerDropdown(); } catch(e) {}
                 renderLedgerGrid();
             } else if(pageName === 'Gyinge') {
                 if(topIcons) topIcons.style.display = 'none';
@@ -1252,7 +1252,7 @@
                 if(topIcons) topIcons.style.display = 'flex';
                 if(footerBar) footerBar.style.display = 'flex';
                 if(keypad) keypad.style.display = 'flex';
-                refreshAkanDropdown();
+                try { refreshAkanDropdown(); } catch(e) {}
             }
         }
 
@@ -2689,12 +2689,12 @@
             else profiles.push({name, type, code, comm, payout, limit});
 
             cloudSync.set('2d_profiles', profiles, (ok) => {
-                closeAddUserModal(); 
-                renderUsersList(); 
-                refreshBoardDropdown(); 
-                refreshAkanDropdown(); 
-                refreshLedgerDropdown(); 
-                refreshGyingeGrid();
+                try { closeAddUserModal(); } catch(e) {} 
+                try { renderUsersList(); } catch(e) {} 
+                try { refreshBoardDropdown(); } catch(e) {} 
+                try { refreshAkanDropdown(); } catch(e) {} 
+                try { refreshLedgerDropdown(); } catch(e) {} 
+                try { refreshGyingeGrid(); } catch(e) {}
                 if (ok === false) {
                     showMessage("⚠️ ဖုန်းထဲသိမ်းပြီးပြီ၊ Cloud မရောက်သေးပါ — ကွန်နက်ရှင်ကောင်းမှ ပြန်သိမ်းပါ");
                 } else {
@@ -2709,9 +2709,9 @@
                 cloudSync.set('2d_profiles', profiles, () => {
                     renderUsersList(); 
                     refreshBoardDropdown(); 
-                    refreshAkanDropdown(); 
-                    refreshLedgerDropdown(); 
-                    refreshGyingeGrid();
+                    try { refreshAkanDropdown(); } catch(e) {} 
+                    try { refreshLedgerDropdown(); } catch(e) {} 
+                    try { refreshGyingeGrid(); } catch(e) {}
                     showMessage("✅ စာရင်း ဖျက်ပြီးပါပြီ။");
                 });
             });
