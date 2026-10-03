@@ -1738,11 +1738,25 @@
                     }
                 } else { generatedNums.push(cleanNo); }
             } else if(cleanText.includes('ထိပ်')) {
-                let d = cleanText.replace('ထိပ်', '').trim() || '5';
-                for(let i=0; i<=9; i++) generatedNums.push(`${d}${i}`);
+                /* v218.7: multi-digit (6.4.5ထိပ် → 6ထိပ်+4ထိပ်+5ထိပ်) */
+                let dPartH = cleanText.replace(/ထိပ်/g, '').trim();
+                let dListH = dPartH.split(/[\.,\-\/\s]+/).filter(x => x);
+                if(dListH.length === 0) dListH = [dPartH.replace(/[^\d]/g, '') || '5'];
+                let seenH = new Set();
+                dListH.forEach(dd => {
+                    let d = dd.replace(/[^\d]/g, '').slice(-1) || '5';
+                    for(let i=0; i<=9; i++) { let nn = `${d}${i}`; if(!seenH.has(nn)) { seenH.add(nn); generatedNums.push(nn); } }
+                });
             } else if(cleanText.includes('နောက်')) {
-                let d = cleanText.replace('နောက်', '').trim() || '5';
-                for(let i=0; i<=9; i++) generatedNums.push(`${i}${d}`);
+                /* v218.7: multi-digit (6.4.5နောက် → 6နောက်+4နောက်+5နောက်) */
+                let dPartN = cleanText.replace(/နောက်/g, '').trim();
+                let dListN = dPartN.split(/[\.,\-\/\s]+/).filter(x => x);
+                if(dListN.length === 0) dListN = [dPartN.replace(/[^\d]/g, '') || '5'];
+                let seenN = new Set();
+                dListN.forEach(dd => {
+                    let d = dd.replace(/[^\d]/g, '').slice(-1) || '5';
+                    for(let i=0; i<=9; i++) { let nn = `${i}${d}`; if(!seenN.has(nn)) { seenN.add(nn); generatedNums.push(nn); } }
+                });
             } else if(cleanText.includes('ပတ်')) {
                 /* v218.4: strip အပတ်/ပတ်, keep only digit (fixes "1အပတ်" → d="1") */
                 let d = cleanText.replace(/အပတ်|ပတ်/g, '').replace(/[^\d]/g, '').slice(-1) || '5';
@@ -1806,15 +1820,26 @@
         }
 
         /* v218.6: reverse of a formula (ထိပ်↔နောက်, 2-digit swap; symmetric formulas → []) */
+        /* v218.7: multi-digit ထိပ်/နောက် (6.4.5ထိပ် → 6နောက်+4နောက်+5နောက်) */
         function expandReverseFormula(formulaText) {
             let ct = convertMyanmarNumbers(formulaText).replace(/အာ/g, 'r').replace(/ရ/g, 'r').replace(/@/g, 'r').replace(/[rR]+$/, '').trim();
             let rev = [];
+            let revSeen = new Set();
+            let pushRev = (x) => { if(!revSeen.has(x)) { revSeen.add(x); rev.push(x); } };
             if(ct.includes('ထိပ်')) {
-                let d = ct.replace(/ထိပ်/g, '').replace(/[^\d]/g, '').slice(-1) || '5';
-                for(let i=0; i<=9; i++) rev.push(`${i}${d}`);
+                let dList = ct.replace(/ထိပ်/g, '').trim().split(/[\.,\-\/\s]+/).filter(x => x);
+                if(dList.length === 0) dList = ['5'];
+                dList.forEach(dd => {
+                    let d = dd.replace(/[^\d]/g, '').slice(-1) || '5';
+                    for(let i=0; i<=9; i++) pushRev(`${i}${d}`);
+                });
             } else if(ct.includes('နောက်')) {
-                let d = ct.replace(/နောက်/g, '').replace(/[^\d]/g, '').slice(-1) || '5';
-                for(let i=0; i<=9; i++) rev.push(`${d}${i}`);
+                let dList = ct.replace(/နောက်/g, '').trim().split(/[\.,\-\/\s]+/).filter(x => x);
+                if(dList.length === 0) dList = ['5'];
+                dList.forEach(dd => {
+                    let d = dd.replace(/[^\d]/g, '').slice(-1) || '5';
+                    for(let i=0; i<=9; i++) pushRev(`${d}${i}`);
+                });
             } else if(/^\d{2}$/.test(ct)) {
                 let sw = ct[1] + ct[0];
                 if(sw !== ct) rev.push(sw);
