@@ -1174,9 +1174,9 @@
                         if(i !== j) results.push(d[i] + d[j]);
                     }
                 } else if(cleanNo) { results.push(cleanNo); }
-            } else if(cleanText.includes('အပါ') || cleanText.includes('အပတ်')) {
+            } else if(cleanText.includes('အပါ') || cleanText.includes('အပတ်') || cleanText.includes('ပါ')) {
                 /* v218.3: အပါ = wrap digit (e.g. 5ပါ → 50-59, 05-95) */
-                let d = cleanText.replace(/အပါ|အပတ်/g, '').replace(/[^\d]/g, '').slice(-1) || '5';
+                let d = cleanText.replace(/အပါ|အပတ်|ပါ/g, '').replace(/[^\d]/g, '').slice(-1) || '5';
                 let setN = new Set();
                 for(let i=0; i<=9; i++) { setN.add(`${d}${i}`); setN.add(`${i}${d}`); }
                 results = Array.from(setN);
