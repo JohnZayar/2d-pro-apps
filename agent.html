@@ -141,15 +141,13 @@
         } catch(e) { db = null; firebaseSdkOk = false; }
 
         /* =====================================================================
-           PWA / installed-app connection hardening (v215)
-           - Safe storage: localStorage may throw inside some WebView / PWA
-             wrappers (DOM storage disabled). We fall back to in-memory
-             storage so the app can never crash at startup.
-           - cloudSync.get now RETRIES Firebase (4 x 4s) instead of giving up
-             after a single 4s window. Installed apps cold-start slower,
-             which used to look like "not connecting".
-           - A live connection pill (🟢/🟡/🔴) shows the real Firebase state,
-             and the app auto re-syncs when the connection comes back.
+           Connection engine v216 - works even where websockets are blocked.
+           Transport priority: Firebase realtime SDK -> REST (plain HTTPS).
+           - Safe storage (memory fallback if localStorage throws).
+           - cloudSync.get: SDK (with retry) -> REST fallback.
+           - cloudSync.set: local cache -> SDK write; REST write too when the
+             socket is down/unknown (idempotent, same value).
+           - Pill: realtime online / REST mode / offline / SDK-missing.
            ===================================================================== */
         const __memStore = {};
         function safeGetItem(k) {
@@ -165,14 +163,79 @@
             try { delete __memStore[k]; } catch(e2) {}
         }
 
+        const REST_BASE = (typeof firebaseConfig !== 'undefined' && firebaseConfig.databaseURL)
+            ? firebaseConfig.databaseURL.replace(/\/+$/, '') : '';
+
+        window.__restOk = null;    // plain-HTTPS reachability of the DB host
+        window.__socketOk = null;  // realtime socket state: true / false / null (unknown)
+
+        function restGet(key, callback) {
+            // callback(value|null); refreshes window.__restOk on the way
+            try {
+                if (!REST_BASE) { window.__restOk = false; try { refreshPillDetail(); } catch(e) {} callback(null); return; }
+                const ctrl = new AbortController();
+                const timer = setTimeout(() => { try { ctrl.abort(); } catch(e) {} }, 12000);
+                fetch(REST_BASE + '/' + key + '.json', { signal: ctrl.signal, cache: 'no-store' })
+                    .then(r => {
+                        clearTimeout(timer);
+                        window.__restOk = (r.status === 200);
+                        try { refreshPillDetail(); } catch(e) {}
+                        if (!r.ok) throw 0;
+                        return r.json();
+                    })
+                    .then(v => callback(v === undefined ? null : v))
+                    .catch(() => callback(null));
+            } catch(e) { callback(null); }
+        }
+        function restSet(key, value, callback) {
+            try {
+                if (!REST_BASE) { if (callback) callback(false); return; }
+                const ctrl = new AbortController();
+                const timer = setTimeout(() => { try { ctrl.abort(); } catch(e) {} }, 12000);
+                fetch(REST_BASE + '/' + key + '.json', {
+                    method: 'PUT', signal: ctrl.signal, cache: 'no-store',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(value === undefined ? null : value)
+                }).then(r => { clearTimeout(timer); if (callback) callback(r.ok); })
+                  .catch(() => { if (callback) callback(false); });
+            } catch(e) { if (callback) callback(false); }
+        }
+        function restDelete(callback) {
+            try {
+                if (!REST_BASE) { if (callback) callback(false); return; }
+                fetch(REST_BASE + '/.json', { method: 'DELETE', cache: 'no-store' })
+                    .then(r => { if (callback) callback(r.ok); })
+                    .catch(() => { if (callback) callback(false); });
+            } catch(e) { if (callback) callback(false); }
+        }
+
+        function runRestCheck(cb) {
+            const done = (ok) => {
+                window.__restOk = ok;
+                try { refreshPillDetail(); } catch(e) {}
+                if (typeof cb === 'function') { try { cb(ok); } catch(e) {} }
+            };
+            try {
+                if (!REST_BASE) { done(false); return; }
+                const ctrl = new AbortController();
+                const timer = setTimeout(() => { try { ctrl.abort(); } catch(e) {} }, 9000);
+                fetch(REST_BASE + '/.json?shallow=true', { signal: ctrl.signal, cache: 'no-store' })
+                    .then(r => { clearTimeout(timer); done(r.status === 200); })
+                    .catch(() => { clearTimeout(timer); done(false); });
+            } catch(e) { done(false); }
+        }
+
         function setConnStatus(state) {
-            // state: 'online' | 'offline' | 'connecting' | 'sdkmissing'
+            // state: 'online' | 'restmode' | 'offline' | 'connecting' | 'sdkmissing'
             const pills = document.querySelectorAll('.conn-pill');
             pills.forEach((el) => {
                 el.dataset.state = state;
                 if (state === 'online') {
                     el.textContent = '🟢 ချိတ်ဆက်ထားသည်';
                     el.style.background = '#064e3b'; el.style.color = '#6ee7b7'; el.style.borderColor = '#10b981';
+                } else if (state === 'restmode') {
+                    el.textContent = '🟡 REST မုဒ်ဖြင့် အလုပ်လုပ်နေသည်';
+                    el.style.background = '#78350f'; el.style.color = '#fcd34d'; el.style.borderColor = '#f59e0b';
                 } else if (state === 'offline') {
                     el.textContent = '🔴 ချိတ်ဆက်မှုပြတ်နေသည်';
                     el.style.background = '#7f1d1d'; el.style.color = '#fca5a5'; el.style.borderColor = '#ef4444';
@@ -184,16 +247,16 @@
                     el.style.background = '#78350f'; el.style.color = '#fcd34d'; el.style.borderColor = '#f59e0b';
                 }
             });
-            refreshPillDetail();
+            try { refreshPillDetail(); } catch(e) {}
         }
 
-        /* REST diagnostic: plain-HTTPS check to the DB host (no websocket).
-           Tells "server unreachable" apart from "websocket blocked". */
-        window.__restOk = null;
         function refreshPillDetail() {
             document.querySelectorAll('.conn-pill').forEach((el) => {
                 const st = el.dataset.state;
-                if (st === 'offline') {
+                if (st === 'restmode') {
+                    if (window.__restOk === false) el.textContent = '🔴 ဆာဗာကို လုံးဝ မရောက်ဘူး';
+                    else el.textContent = '🟡 REST မုဒ်ဖြင့် အလုပ်လုပ်နေသည်';
+                } else if (st === 'offline') {
                     if (window.__restOk === true) el.textContent = '🔴 ဆာဗာ ရောက်တယ် · socket ပိတ်နေပုံရတယ်';
                     else if (window.__restOk === false) el.textContent = '🔴 ဆာဗာကို လုံးဝ မရောက်ဘူး';
                 } else if (st === 'sdkmissing') {
@@ -202,122 +265,112 @@
                 }
             });
         }
-        function runRestCheck() {
-            try {
-                const base = (typeof firebaseConfig !== 'undefined' && firebaseConfig.databaseURL) ? firebaseConfig.databaseURL : '';
-                if (!base || base.indexOf('http') !== 0) return;
-                const ctrl = new AbortController();
-                const timer = setTimeout(() => { try { ctrl.abort(); } catch(e) {} }, 9000);
-                fetch(base + '/.json?shallow=true', { signal: ctrl.signal, cache: 'no-store' })
-                    .then(r => { clearTimeout(timer); window.__restOk = (r.status === 200); refreshPillDetail(); })
-                    .catch(() => { clearTimeout(timer); window.__restOk = false; refreshPillDetail(); });
-            } catch(e) { window.__restOk = false; refreshPillDetail(); }
-        }
 
         const cloudSync = {
             get(key, callback) {
-                if (!db) {
-                    // SDK failed to load: serve cache only, never crash.
-                    setConnStatus('sdkmissing');
-                    let localData = safeGetItem('cache_' + key);
-                    if (localData) { try { callback(JSON.parse(localData)); } catch(e) {} }
-                    else { callback(null); }
-                    return;
-                }
-                setConnStatus('connecting');
                 let localData = safeGetItem('cache_' + key);
                 let answered = false;
+                let done = false;
+                let safetyTimer = null;
+                const finish = (val) => {
+                    if (done) return;
+                    done = true;
+                    try { clearTimeout(safetyTimer); } catch(e) {}
+                    callback(val);
+                };
                 if (localData) {
                     answered = true;
                     try { callback(JSON.parse(localData)); } catch(e) {}
                 }
 
-                const MAX_TRIES = 4;      // 4 attempts x 4s = up to 16s for slow cold starts
+                const deliverRest = () => {
+                    // REST transport: works even where the realtime socket is blocked
+                    if (!REST_BASE) { if (!answered) { answered = true; finish(null); } return; }
+                    setConnStatus(window.__restOk === false ? 'offline' : 'restmode');
+                    restGet(key, (val) => {
+                        if (val !== null && val !== undefined) {
+                            const strVal = JSON.stringify(val);
+                            safeSetItem('cache_' + key, strVal);
+                            if (localData !== strVal || !answered) { answered = true; finish(val); }
+                        } else if (!answered) { answered = true; finish(null); }
+                    });
+                };
+
+                if (!db || window.__socketOk === false) { deliverRest(); return; }
+
+                setConnStatus('connecting');
+                const MAX_TRIES = 4;
                 const TRY_TIMEOUT = 4000;
                 let tries = 0;
-                let safetyTimer = null;
-                let done = false;
-                const finish = (val) => {
-                    if (done) return;
-                    done = true;
-                    clearTimeout(safetyTimer);
-                    callback(val);
-                };
                 const attempt = () => {
                     tries++;
-                    clearTimeout(safetyTimer);
+                    try { clearTimeout(safetyTimer); } catch(e) {}
                     safetyTimer = setTimeout(() => {
-                        if (tries < MAX_TRIES) { attempt(); }                    // Firebase slow -> retry
-                        else if (!answered) { answered = true; finish(null); } // truly unreachable
+                        if (tries < MAX_TRIES) { attempt(); }
+                        else { try { clearTimeout(safetyTimer); } catch(e) {} deliverRest(); }
                     }, TRY_TIMEOUT);
                     try {
                         db.ref(key).once('value', (snapshot) => {
-                            clearTimeout(safetyTimer);
-                            let val = snapshot.val();
+                            try { clearTimeout(safetyTimer); } catch(e) {}
+                            const val = snapshot.val();
                             if (val !== null && val !== undefined) {
-                                let strVal = JSON.stringify(val);
+                                const strVal = JSON.stringify(val);
                                 safeSetItem('cache_' + key, strVal);
-                                if (!localData || localData !== strVal || !answered) {
-                                    answered = true;
-                                    finish(val);
-                                }
-                            } else if (!answered) {
-                                answered = true;
-                                finish(null);
-                            }
-                        }, (error) => {
-                            clearTimeout(safetyTimer);
-                            if (tries < MAX_TRIES) { attempt(); }
-                            else if (!answered) { answered = true; finish(null); }
+                                if (localData !== strVal || !answered) { answered = true; finish(val); }
+                            } else if (!answered) { answered = true; finish(null); }
+                        }, () => {
+                            try { clearTimeout(safetyTimer); } catch(e) {}
+                            if (tries < MAX_TRIES) { attempt(); } else { deliverRest(); }
                         });
                     } catch(e) {
-                        clearTimeout(safetyTimer);
-                        if (tries < MAX_TRIES) { attempt(); }
-                        else if (!answered) { answered = true; finish(null); }
+                        try { clearTimeout(safetyTimer); } catch(e2) {}
+                        if (tries < MAX_TRIES) { attempt(); } else { deliverRest(); }
                     }
                 };
                 attempt();
             },
             set(key, value, callback) {
                 safeSetItem('cache_' + key, JSON.stringify(value));
-
-                if(callback) callback();
-
-                if (!db) return; // SDK missing: keep local cache, skip cloud write
-                try {
-                    db.ref(key).set(value).catch(error => {});
-                } catch(e) {}
+                if (callback) callback();
+                const socketUp = (window.__socketOk === true);
+                if (db && socketUp) {
+                    try { db.ref(key).set(value).then(() => {}).catch(() => {}); } catch(e) {}
+                } else {
+                    // Socket down or unknown: write via REST now (idempotent);
+                    // also hand to the SDK so it flushes if the socket recovers.
+                    if (db) { try { db.ref(key).set(value).then(() => {}).catch(() => {}); } catch(e) {} }
+                    restSet(key, value);
+                }
             }
         };
 
-        /* Live Firebase connection monitor: updates the pill and auto re-syncs
-           cloud data when the connection drops and comes back. */
+        /* Realtime socket monitor + REST reachability. */
         let __cloudWasOnline = false;
         function resyncCloudData() {
-            try {
-                if (typeof refreshHomeSessions === 'function') { refreshHomeSessions(); }
-            } catch(e) {}
+            try { if (typeof refreshHomeSessions === 'function') { refreshHomeSessions(); } } catch(e) {}
         }
+
         try {
             if (!firebaseSdkOk || !db) {
-                setConnStatus('sdkmissing');
+                runRestCheck((ok) => setConnStatus(ok ? 'restmode' : 'offline'));
             } else {
                 setConnStatus('connecting');
                 db.ref('.info/connected').on('value', (snap) => {
                     const online = snap.val() === true;
+                    window.__socketOk = online;
                     if (online) {
                         setConnStatus('online');
-                        if (!__cloudWasOnline) { resyncCloudData(); }  // just reconnected -> pull fresh data
+                        if (!__cloudWasOnline) { try { resyncCloudData(); } catch(e) {} }
                     } else {
-                        setConnStatus('offline');
+                        runRestCheck((ok) => setConnStatus(ok ? 'restmode' : 'offline'));
                     }
                     __cloudWasOnline = online;
                 });
-                window.addEventListener('offline', () => setConnStatus('offline'));
+                window.addEventListener('offline', () => { window.__socketOk = false; setConnStatus('offline'); });
                 window.addEventListener('online', () => setConnStatus('connecting'));
             }
-        } catch(e) { setConnStatus('sdkmissing'); }
-        try { runRestCheck(); } catch(e) {} // plain-HTTPS reachability probe
+        } catch(e) { setConnStatus('offline'); }
+        try { runRestCheck(); } catch(e) {}
     </script>
 
     <div id="customAlert"></div>
