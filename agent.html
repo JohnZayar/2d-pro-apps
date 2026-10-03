@@ -125,12 +125,20 @@
           appId: "1:439156329612:web:5d478b4eda8eb8ac533fa9",
           measurementId: "G-Y0EKQJJFN6"
         };
-        firebase.initializeApp(firebaseConfig);
-        const db = firebase.database();
-
+        // Guarded Firebase init: if the SDK CDN fails to load (slow/blocked
+        // network), the app must NOT crash silently — it shows a clear status.
+        let db = null;
+        let firebaseSdkOk = false;
         try {
-            db.goOnline();
-        } catch(e) {}
+            if (typeof firebase !== 'undefined' && firebase.initializeApp) {
+                firebase.initializeApp(firebaseConfig);
+                if (typeof firebase.database === 'function') {
+                    db = firebase.database();
+                    try { db.goOnline(); } catch(e) {}
+                    firebaseSdkOk = true;
+                }
+            }
+        } catch(e) { db = null; firebaseSdkOk = false; }
 
         /* =====================================================================
            PWA / installed-app connection hardening (v215)
@@ -158,7 +166,7 @@
         }
 
         function setConnStatus(state) {
-            // state: 'online' | 'offline' | 'connecting'
+            // state: 'online' | 'offline' | 'connecting' | 'sdkmissing'
             const pills = document.querySelectorAll('.conn-pill');
             pills.forEach((el) => {
                 if (state === 'online') {
@@ -166,6 +174,9 @@
                     el.style.background = '#064e3b'; el.style.color = '#6ee7b7'; el.style.borderColor = '#10b981';
                 } else if (state === 'offline') {
                     el.textContent = '🔴 ချိတ်ဆက်မှုပြတ်နေသည်';
+                    el.style.background = '#7f1d1d'; el.style.color = '#fca5a5'; el.style.borderColor = '#ef4444';
+                } else if (state === 'sdkmissing') {
+                    el.textContent = '🔴 Firebase SDK တင်မရပါ (internet စစ်ပါ)';
                     el.style.background = '#7f1d1d'; el.style.color = '#fca5a5'; el.style.borderColor = '#ef4444';
                 } else {
                     el.textContent = '🟡 ချိတ်ဆက်နေသည်…';
@@ -176,6 +187,14 @@
 
         const cloudSync = {
             get(key, callback) {
+                if (!db) {
+                    // SDK failed to load: serve cache only, never crash.
+                    setConnStatus('sdkmissing');
+                    let localData = safeGetItem('cache_' + key);
+                    if (localData) { try { callback(JSON.parse(localData)); } catch(e) {} }
+                    else { callback(null); }
+                    return;
+                }
                 setConnStatus('connecting');
                 let localData = safeGetItem('cache_' + key);
                 let answered = false;
@@ -235,6 +254,7 @@
 
                 if(callback) callback();
 
+                if (!db) return; // SDK missing: keep local cache, skip cloud write
                 try {
                     db.ref(key).set(value).catch(error => {});
                 } catch(e) {}
@@ -250,20 +270,24 @@
             } catch(e) {}
         }
         try {
-            setConnStatus('connecting');
-            db.ref('.info/connected').on('value', (snap) => {
-                const online = snap.val() === true;
-                if (online) {
-                    setConnStatus('online');
-                    if (!__cloudWasOnline) { resyncCloudData(); }  // just reconnected -> pull fresh data
-                } else {
-                    setConnStatus('offline');
-                }
-                __cloudWasOnline = online;
-            });
-            window.addEventListener('offline', () => setConnStatus('offline'));
-            window.addEventListener('online', () => setConnStatus('connecting'));
-        } catch(e) {}
+            if (!firebaseSdkOk || !db) {
+                setConnStatus('sdkmissing');
+            } else {
+                setConnStatus('connecting');
+                db.ref('.info/connected').on('value', (snap) => {
+                    const online = snap.val() === true;
+                    if (online) {
+                        setConnStatus('online');
+                        if (!__cloudWasOnline) { resyncCloudData(); }  // just reconnected -> pull fresh data
+                    } else {
+                        setConnStatus('offline');
+                    }
+                    __cloudWasOnline = online;
+                });
+                window.addEventListener('offline', () => setConnStatus('offline'));
+                window.addEventListener('online', () => setConnStatus('connecting'));
+            }
+        } catch(e) { setConnStatus('sdkmissing'); }
     </script>
 
     <div id="customAlert"></div>
