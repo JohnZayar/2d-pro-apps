@@ -67,13 +67,13 @@
         .fab-btn { position: absolute; bottom: 20px; right: 20px; width: 52px; height: 52px; background: #38bdf8; color: #000; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 26px; font-weight: bold; box-shadow: 0 4px 15px rgba(56,189,248,0.4); cursor: pointer; border: none; z-index: 100; }
 
         .ledger-container { padding: 8px; overflow-y: auto; flex: 1; display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; background: #050505; align-content: start; }
-        /* v218: compact ledger summary boxes */
-        .ledger-summary { display: flex; gap: 8px; padding: 8px 10px 4px; background: #050505; }
-        .ledger-sumbox { flex: 1; background: #1a2332; border: 1px solid #3b82f6; border-radius: 10px; padding: 8px 6px; text-align: center; cursor: pointer; user-select: none; -webkit-tap-highlight-color: transparent; }
+        /* v218.1: compact summary boxes (half height) */
+        .ledger-summary { display: flex; gap: 8px; padding: 6px 10px 2px; background: #050505; }
+        .ledger-sumbox { flex: 1; background: #1a2332; border: 1px solid #3b82f6; border-radius: 8px; padding: 3px 6px; text-align: center; cursor: pointer; user-select: none; -webkit-tap-highlight-color: transparent; }
         .ledger-sumbox:active { background: #243044; }
-        .ledger-sumbox .sum-label { font-size: 11px; color: #93a4bd; margin-bottom: 2px; }
-        .ledger-sumbox .sum-val { font-size: 18px; font-weight: 700; color: #fff; }
-        .ledger-sumbox .sum-hint { font-size: 10px; color: #5b6b82; margin-top: 2px; }
+        .ledger-sumbox .sum-label { font-size: 10px; color: #93a4bd; margin-bottom: 0; line-height: 1.2; }
+        .ledger-sumbox .sum-val { font-size: 15px; font-weight: 700; color: #fff; line-height: 1.3; }
+        .ledger-sumbox .sum-hint { font-size: 9px; color: #5b6b82; margin-top: 0; line-height: 1.2; }
         /* v218: limit popup */
         .limit-popup-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.65); display: none; align-items: center; justify-content: center; z-index: 9999; }
         .limit-popup { background: #1a2332; border: 1px solid #3b82f6; border-radius: 14px; padding: 20px; width: 82%; max-width: 320px; text-align: center; }
@@ -176,20 +176,20 @@
         .form-group input, .form-group select { width: 100%; background: #111827; color: #fff; border: 1px solid #374151; padding: 6px 8px; border-radius: 6px; font-size: 13px; font-weight: bold; outline: none; }
         .btn-modal-action { background: #38bdf8; border: none; color: #000; font-size: 14px; font-weight: bold; text-align: center; width: 100%; padding: 8px; border-radius: 6px; cursor: pointer; margin-top: 4px; }
 
-        /* v218: bigger modern paste board */
-        .custom-paste-card { background: linear-gradient(160deg, #1e293b 0%, #0f172a 100%); width: 95%; max-width: 540px; border-radius: 18px; padding: 20px; border: 1px solid #3b82f6; box-shadow: 0 20px 50px rgba(0,0,0,0.9), 0 0 0 1px rgba(59,130,246,0.15); display: flex; flex-direction: column; gap: 14px; z-index: 100000; max-height: 92vh; overflow-y: auto; }
+        /* v218.1: even bigger paste board, small English buttons */
+        .custom-paste-card { background: linear-gradient(160deg, #1e293b 0%, #0f172a 100%); width: 97%; max-width: 620px; border-radius: 18px; padding: 20px; border: 1px solid #3b82f6; box-shadow: 0 20px 50px rgba(0,0,0,0.9), 0 0 0 1px rgba(59,130,246,0.15); display: flex; flex-direction: column; gap: 14px; z-index: 100000; max-height: 94vh; overflow-y: auto; }
         .paste-modal-title { color: #fff; font-size: 18px; font-weight: 800; text-align: center; letter-spacing: 0.3px; }
         .paste-select-box { width: 100%; background: #0f1622; color: #fff; border: 1px solid #3b82f6; padding: 12px; border-radius: 10px; font-weight: bold; font-size: 15px; outline: none; margin-bottom: 4px; }
         .paste-textarea-wrapper { background: #0a0f1a; border: 2px solid #3b82f6; border-radius: 12px; padding: 14px; position: relative; box-shadow: inset 0 2px 8px rgba(0,0,0,0.5); }
-        .paste-textarea-wrapper textarea { width: 100%; height: 260px; background: transparent; color: #fff; border: none; font-size: 16px; font-weight: 600; resize: none; outline: none; line-height: 1.7; user-select: text; -webkit-user-select: text; font-family: 'Courier New', monospace; }
+        .paste-textarea-wrapper textarea { width: 100%; height: 320px; background: transparent; color: #fff; border: none; font-size: 17px; font-weight: 600; resize: none; outline: none; line-height: 1.7; user-select: text; -webkit-user-select: text; font-family: 'Courier New', monospace; }
         .paste-textarea-wrapper textarea::placeholder { color: #475569; font-family: inherit; }
         
         .paste-actions-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 4px; }
-        .btn-paste-cancel { background: #7f1d1d; color: white; border: none; padding: 14px 8px; border-radius: 10px; font-weight: bold; font-size: 15px; cursor: pointer; text-align: center; }
-        .btn-paste-cancel:active { background: #991b1b; }
-        .btn-paste-btn { background: #15803d; color: white; border: none; padding: 14px 8px; border-radius: 10px; font-weight: bold; font-size: 15px; cursor: pointer; text-align: center; }
-        .btn-paste-btn:active { background: #16a34a; }
-        .btn-paste-save { background: linear-gradient(135deg, #0284c7, #0369a1); color: white; border: none; padding: 14px 8px; border-radius: 10px; font-weight: bold; font-size: 15px; cursor: pointer; text-align: center; box-shadow: 0 4px 12px rgba(2,132,199,0.4); }
+        .btn-paste-cancel { background: #374151; color: #d1d5db; border: none; padding: 8px 4px; border-radius: 8px; font-weight: 600; font-size: 12px; cursor: pointer; text-align: center; }
+        .btn-paste-cancel:active { background: #4b5563; }
+        .btn-paste-btn { background: #374151; color: #d1d5db; border: none; padding: 8px 4px; border-radius: 8px; font-weight: 600; font-size: 12px; cursor: pointer; text-align: center; }
+        .btn-paste-btn:active { background: #4b5563; }
+        .btn-paste-save { background: linear-gradient(135deg, #0284c7, #0369a1); color: white; border: none; padding: 8px 4px; border-radius: 8px; font-weight: 600; font-size: 12px; cursor: pointer; text-align: center; box-shadow: 0 4px 12px rgba(2,132,199,0.4); }
         .btn-paste-save:active { transform: scale(0.97); }
 
         #customConfirmModal { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.85); display: none; align-items: center; justify-content: center; z-index: 100005; backdrop-filter: blur(4px); }
@@ -663,9 +663,9 @@
             </div>
 
             <div class="paste-actions-grid">
-                <button class="btn-paste-cancel" onclick="closePasteModal()">မလုပ်တော့ပါ</button>
-                <button class="btn-paste-btn" onclick="pasteFromClipboard()">PASTE</button>
-                <button class="btn-paste-save" onclick="processPasteData()">ထည့်မည်</button>
+                <button class="btn-paste-cancel" onclick="closePasteModal()">Back</button>
+                <button class="btn-paste-btn" onclick="pasteFromClipboard()">Paste</button>
+                <button class="btn-paste-save" onclick="processPasteData()">Save</button>
             </div>
         </div>
     </div>
@@ -1970,13 +1970,7 @@
             let arr = isAkan ? akanEntries : listData;
             let item = arr.find(x => Number(x.id) === Number(recordId));
             if (!item) { showMessage("❌ စာရင်း ရှာမတွေ့ပါ။"); return; }
-            /* don't allow edit after session closed */
-            let sid = Number(item.sessionId);
-            let sess = sessions.find(s => Number(s.id) === sid);
-            if (winningNumbers[sid] || (sess && isSessionTimeExpired(sess))) {
-                showMessage("🔒 ပွဲစဉ် ပိတ်သွားပြီဖြစ်၍ ပြင်ခွင့် မရှိပါ။");
-                return;
-            }
+            /* v218.1: allow editing even on closed/old sessions — Master can fix mistakes */
             document.getElementById('editRecordNo').value = item.no;
             document.getElementById('editRecordAmt').value = item.amt || item.amount || 0;
             document.getElementById('editRecordId').value = item.id;
