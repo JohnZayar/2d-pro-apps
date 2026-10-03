@@ -15,8 +15,10 @@ import sys
 
 def safe(s):
     s = re.sub(r'[^a-z0-9]', '', s.lower()) or 'app'
-    # Android package segments must start with a LETTER (aapt2 rejects
-    # digit- or underscore-leading segments), so prefix with 'a'.
+    # Android package segments must start with a letter (aapt2 rejects
+    # digit-leading segments). Project choice: "2d-pro-apps" -> "pro2dapps".
+    if s == '2dproapps':
+        return 'pro2dapps'
     if not s[0].isalpha():
         s = 'a' + s
     return s
