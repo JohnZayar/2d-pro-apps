@@ -239,7 +239,7 @@
         <div class="sidebar" id="sidebar">
             <div class="sidebar-header">
                 <h3>🌟 2D Master Pro</h3>
-                <p>v213.1 (Optimized)</p>
+                <p>v217 (Multi-tenant)</p>
             </div>
             <div class="sidebar-menu">
                 <div class="menu-link" onclick="switchPage('Home')"><span>🏠</span><span>ပင်မစာမျက်နှာ (Home)</span></div>
@@ -2840,7 +2840,9 @@
                     return;
                 }
                 firebase.auth().onAuthStateChanged(async (user) => {
-                    if (user) {
+                    // Only a real (email) account is a Main. An anonymous session
+                    // (e.g. from the Agent app on this same browser) is NOT a Main.
+                    if (user && !user.isAnonymous) {
                         if (__booted) return;
                         __booted = true;
                         setTenantId(user.uid);

@@ -1566,11 +1566,31 @@
             const el = document.getElementById('linkErr');
             if (el) el.textContent = msg || '';
         }
+        function refreshAgentMapping() {
+            // Keep userMains/{anonUid} -> mainId fresh (anon uid can change if
+            // the browser's auth session was replaced, e.g. by a Main login).
+            try {
+                const u = (typeof firebase !== 'undefined' && firebase.auth) ? firebase.auth().currentUser : null;
+                const tid = getTenantId();
+                if (u && u.isAnonymous && tid) {
+                    cloudSync.set('/userMains/' + u.uid, tid, () => {});
+                }
+            } catch(e) {}
+        }
         function ensureAnonAuth(cb) {
             try {
                 if (typeof firebase === 'undefined' || !firebase.auth) { cb(); return; }
                 const au = firebase.auth();
-                if (au.currentUser) {
+                const cur = au.currentUser;
+                if (cur && !cur.isAnonymous) {
+                    // A Main account is logged in on this browser — linking as an
+                    // agent will sign it out here. Ask first.
+                    if (!confirm('ဒီ browser မှာ Main အကောင့် ဝင်ထားပါတယ်။ Agent အနေနဲ့ ဆက်ချိတ်ရင် Main အကောင့် ဒီ browser မှာ logout ဖြစ်သွားမယ်။ ဆက်လုပ်မလား?')) {
+                        showLinkOverlay('Main အကောင့် ဝင်ထားလို့ Agent မချိတ်ရသေးပါ။');
+                        return;
+                    }
+                }
+                if (cur && cur.isAnonymous) {
                     refreshIdToken(false).then(() => cb()).catch(() => cb());
                     return;
                 }
@@ -1593,21 +1613,16 @@
             linkErr('စစ်ဆေးနေသည်…');
             verifyLinkCode(code, (ok, name) => {
                 if (!ok) { linkErr('❌ ကုဒ် မမှန်ပါ — ဒိုင်ဆီက ကုဒ်အမှန် ပြန်တောင်းပါ။'); return; }
-                let uid = null;
-                try { uid = firebase.auth().currentUser ? firebase.auth().currentUser.uid : null; } catch(e) {}
                 const saveLink = () => {
                     safeSetItem('2d_link_main', code);
                     setTenantId(code);
+                    refreshAgentMapping();
                     try { startCloudMonitor(); } catch(e) {}
                     hideLinkOverlay();
                     showMessage('✅ "' + name + '" နဲ့ ချိတ်ဆက်ပြီးပြီ');
                     checkLoginState();
                 };
-                if (uid) {
-                    // register this device under the Main so security rules allow access
-                    try { cloudSync.set('/userMains/' + uid, code, saveLink); }
-                    catch(e) { saveLink(); }
-                } else { saveLink(); }
+                saveLink();
             });
         }
         function unlinkMain() {
@@ -1626,6 +1641,7 @@
                     verifyLinkCode(linked, (ok) => {
                         if (ok) {
                             setTenantId(linked);
+                            refreshAgentMapping();
                             try { startCloudMonitor(); } catch(e) {}
                             hideLinkOverlay();
                             checkLoginState();
