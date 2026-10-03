@@ -1703,17 +1703,22 @@
                 generatedNums = Array.from(setNums);
             } else if(cleanText.includes('ပါဝါ') || cleanText === 'ပါဝါ') {
                 generatedNums = ['05', '50', '16', '61', '27', '72', '38', '83', '49', '94'];
-            } else if(cleanText.includes('ဘရိတ်') || cleanText.includes('ရိတ်') || cleanText.includes('ဘ') || cleanText.includes('ရ')) {
-                let matchNum = cleanText.match(/\d+/);
-                let bTarget = matchNum ? parseInt(matchNum[0], 10) : 2;
-                for(let i=0; i<=9; i++) {
-                    for(let j=0; j<=9; j++) {
-                        let sum = i + j;
-                        if(sum % 10 === bTarget) {
-                            generatedNums.push(`${i}${j}`);
+            } else if(cleanText.includes('ဘရိတ်') || cleanText.includes('ရိတ်') || /bk/i.test(cleanText) || cleanText.includes('ဘ')) {
+                /* v218.6: BK = ဘရိတ်; multi-digit (570BK → 5ဘရိတ်+7ဘရိတ်+0ဘရိတ်) */
+                let bkDigits = cleanText.replace(/ဘရိတ်|ရိတ်|bk/gi, '').replace(/[^\d]/g, '');
+                if(bkDigits.length === 0) bkDigits = '2';
+                let bkSeen = new Set();
+                bkDigits.split('').forEach(dd => {
+                    let bTarget = parseInt(dd, 10);
+                    for(let i=0; i<=9; i++) {
+                        for(let j=0; j<=9; j++) {
+                            if((i + j) % 10 === bTarget) {
+                                let bn = `${i}${j}`;
+                                if(!bkSeen.has(bn)) { bkSeen.add(bn); generatedNums.push(bn); }
+                            }
                         }
                     }
-                }
+                });
             } else if(cleanText.endsWith('R') || cleanText.endsWith('r')) {
                 let cleanNo = cleanText.replace(/R|r/g, '').trim();
                 /* v218.4: handle "34r 35r 36r" list — expand each with reverse */
@@ -1785,12 +1790,41 @@
                     numsToProcess.forEach(nStr => {
                         nStr = nStr.trim();
                         if(nStr) {
-                            generatedNums.push(nStr);
+                            /* v218.6: single digit = အပါ (e.g. 4-5-6 → 4အပါ+5အပါ+6အပါ) */
+                            if(/^\d$/.test(nStr)) {
+                                let sdSeen = new Set();
+                                for(let i=0; i<=9; i++) { sdSeen.add(`${nStr}${i}`); sdSeen.add(`${i}${nStr}`); }
+                                sdSeen.forEach(x => generatedNums.push(x));
+                            } else {
+                                generatedNums.push(nStr);
+                            }
                         }
                     });
                 }
             }
             return generatedNums;
+        }
+
+        /* v218.6: reverse of a formula (ထိပ်↔နောက်, 2-digit swap; symmetric formulas → []) */
+        function expandReverseFormula(formulaText) {
+            let ct = convertMyanmarNumbers(formulaText).replace(/အာ/g, 'r').replace(/ရ/g, 'r').replace(/@/g, 'r').replace(/[rR]+$/, '').trim();
+            let rev = [];
+            if(ct.includes('ထိပ်')) {
+                let d = ct.replace(/ထိပ်/g, '').replace(/[^\d]/g, '').slice(-1) || '5';
+                for(let i=0; i<=9; i++) rev.push(`${i}${d}`);
+            } else if(ct.includes('နောက်')) {
+                let d = ct.replace(/နောက်/g, '').replace(/[^\d]/g, '').slice(-1) || '5';
+                for(let i=0; i<=9; i++) rev.push(`${d}${i}`);
+            } else if(/^\d{2}$/.test(ct)) {
+                let sw = ct[1] + ct[0];
+                if(sw !== ct) rev.push(sw);
+            } else if(/^\d-\d-\d/.test(ct) || /^[\d\.,\-\/\s]+$/.test(ct)) {
+                /* plain number list: reverse each 2-digit */
+                ct.split(/[\.,\-\/\s]+/).forEach(p => {
+                    if(/^\d{2}$/.test(p)) { let sw = p[1]+p[0]; if(sw !== p && !rev.includes(sw)) rev.push(sw); }
+                });
+            }
+            return rev;
         }
 
         function renderWeeklyTableReport() {
@@ -2755,6 +2789,51 @@
                                 parsedSuccess = true;
                             }
                         } else {
+                        /* v218.6: jammed "formulaAmount r reverseAmount" e.g. "6ထိပ်7000r3000" */
+                        let jammedRMatch = convertedLine.match(/^(.+?[^0-9\s,.\-\/])(\d{2,})[rR](\d{2,})$/);
+                        if (jammedRMatch) {
+                            let formulaPart = jammedRMatch[1].trim();
+                            let mainAmt = parseInt(jammedRMatch[2], 10);
+                            let rAmt = parseInt(jammedRMatch[3], 10);
+                            let exp = expandFormula(formulaPart);
+                            let revExp = expandReverseFormula(formulaPart);
+                            if (exp.length > 0 && mainAmt > 0) {
+                                exp.forEach(numStr => {
+                                    if (closedNumsList.includes(numStr)) { hasClosedError = true; return; }
+                                    let entryObj = { id: Number(Date.now() + Math.random()), sessionId: Number(currentSessionId), no: numStr, amt: mainAmt, target: targetKey, date: now.toLocaleDateString(), time: timeStr, batchNo: null };
+                                    if(activePage === 'pageAkanDain') akanEntries.push(entryObj); else listData.push(entryObj);
+                                });
+                                revExp.forEach(rn => {
+                                    if (closedNumsList.includes(rn)) { hasClosedError = true; return; }
+                                    let revObj = { id: Number(Date.now() + Math.random() + 1), sessionId: Number(currentSessionId), no: rn, amt: rAmt, target: targetKey, date: now.toLocaleDateString(), time: timeStr, batchNo: null };
+                                    if(activePage === 'pageAkanDain') akanEntries.push(revObj); else listData.push(revObj);
+                                });
+                                parsedSuccess = true;
+                            }
+                        } else {
+                        /* v218.6: r as amount separator e.g. "4-5-6r1000" (အပါ), "12r500" (12+21) */
+                        let rSepMatch = convertedLine.match(/^(.+?)[rR](\d+)$/);
+                        if (rSepMatch) {
+                            let formulaPart = rSepMatch[1].trim();
+                            let amt = parseInt(rSepMatch[2], 10);
+                            let exp = expandFormula(formulaPart);
+                            let isPlainNums = !/ထိပ်|နောက်|ပတ်|ပါ|ဘရိတ်|ရိတ်|ခွေ|ပူး|ပါဝါ|နက္ခတ်|စုံ|ညီအစ်ကို|bk/i.test(formulaPart);
+                            if (exp.length > 0 && amt > 0) {
+                                exp.forEach(numStr => {
+                                    if (closedNumsList.includes(numStr)) { hasClosedError = true; return; }
+                                    let entryObj = { id: Number(Date.now() + Math.random()), sessionId: Number(currentSessionId), no: numStr, amt: amt, target: targetKey, date: now.toLocaleDateString(), time: timeStr, batchNo: null };
+                                    if(activePage === 'pageAkanDain') akanEntries.push(entryObj); else listData.push(entryObj);
+                                    if (isPlainNums && numStr.length === 2) {
+                                        let revNum = numStr[1] + numStr[0];
+                                        if (revNum !== numStr && !closedNumsList.includes(revNum)) {
+                                            let revObj = { id: Number(Date.now() + Math.random() + 1), sessionId: Number(currentSessionId), no: revNum, amt: amt, target: targetKey, date: now.toLocaleDateString(), time: timeStr, batchNo: null };
+                                            if(activePage === 'pageAkanDain') akanEntries.push(revObj); else listData.push(revObj);
+                                        }
+                                    }
+                                });
+                                parsedSuccess = true;
+                            }
+                        } else {
                         let rSpaceMatch = convertedLine.match(/^(.*?[\d]+[rR])\s*(\d+)$/i);
                         if(rSpaceMatch) {
                             let leftPart = rSpaceMatch[1].trim();
@@ -2818,6 +2897,8 @@
                                 }
                             }
                         }
+                    }
+                    }
                     }
                 }
             }

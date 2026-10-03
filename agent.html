@@ -1145,17 +1145,22 @@
                 results = ['05','50','16','61','27','72','38','83','49','94'];
             } else if(cleanText.includes('နက္ခတ်')) {
                 results = ['07','18','24','53','69','70','81','42','35','96'];
-            } else if(cleanText.includes('ဘရိတ်') || cleanText.includes('ရိတ်') || cleanText.includes('ဘ') || cleanText.includes('ရ')) {
-                let matchNum = cleanText.match(/\d+/);
-                let bTarget = matchNum ? parseInt(matchNum[0], 10) : 2;
-                for(let i=0; i<=9; i++) {
-                    for(let j=0; j<=9; j++) {
-                        let sum = i + j;
-                        if(sum % 10 === bTarget) {
-                            results.push(`${i}${j}`);
+            } else if(cleanText.includes('ဘရိတ်') || cleanText.includes('ရိတ်') || /bk/i.test(cleanText) || cleanText.includes('ဘ')) {
+                /* v218.6: BK = ဘရိတ်; multi-digit (570BK → 5ဘရိတ်+7ဘရိတ်+0ဘရိတ်) */
+                let bkDigitsA = cleanText.replace(/ဘရိတ်|ရိတ်|bk/gi, '').replace(/[^\d]/g, '');
+                if(bkDigitsA.length === 0) bkDigitsA = '2';
+                let bkSeenA = new Set();
+                bkDigitsA.split('').forEach(dd => {
+                    let bTarget = parseInt(dd, 10);
+                    for(let i=0; i<=9; i++) {
+                        for(let j=0; j<=9; j++) {
+                            if((i + j) % 10 === bTarget) {
+                                let bn = `${i}${j}`;
+                                if(!bkSeenA.has(bn)) { bkSeenA.add(bn); results.push(bn); }
+                            }
                         }
                     }
-                }
+                });
             } else if(cleanText.includes('ညီအစ်ကို')) {
                 results = ['01','10','12','21','23','32','34','43','45','54','56','65','67','76','78','87','89','98','90','09'];
             } else if(cleanText.includes('စုံစုံ')) {
@@ -1197,10 +1202,42 @@
                     }
                 } else {
                     let parts = cleanText.split(/[\.,\-\/\s]+/);
-                    parts.forEach(p => { if(p) results.push(p); });
+                    parts.forEach(p => {
+                        if(p) {
+                            /* v218.6: single digit = အပါ (e.g. 4-5-6 → 4အပါ+5အပါ+6အပါ) */
+                            if(/^\d$/.test(p)) {
+                                let sdSeenA = new Set();
+                                for(let i=0; i<=9; i++) { sdSeenA.add(`${p}${i}`); sdSeenA.add(`${i}${p}`); }
+                                sdSeenA.forEach(x => results.push(x));
+                            } else {
+                                results.push(p);
+                            }
+                        }
+                    });
                 }
             }
             return results;
+        }
+
+        /* v218.6: reverse of a formula (ထိပ်↔နောက်, 2-digit swap; symmetric formulas → []) */
+        function expandReverseFormula(formulaText) {
+            let ct = convertMyanmarNumbers(formulaText).replace(/အာ/g, 'r').replace(/ရ/g, 'r').replace(/@/g, 'r').replace(/[rR]+$/, '').trim();
+            let rev = [];
+            if(ct.includes('ထိပ်')) {
+                let d = ct.replace(/ထိပ်/g, '').replace(/[^\d]/g, '').slice(-1) || '5';
+                for(let i=0; i<=9; i++) rev.push(`${i}${d}`);
+            } else if(ct.includes('နောက်')) {
+                let d = ct.replace(/နောက်/g, '').replace(/[^\d]/g, '').slice(-1) || '5';
+                for(let i=0; i<=9; i++) rev.push(`${d}${i}`);
+            } else if(/^\d{2}$/.test(ct)) {
+                let sw = ct[1] + ct[0];
+                if(sw !== ct) rev.push(sw);
+            } else if(/^[\d\.,\-\/\s]+$/.test(ct)) {
+                ct.split(/[\.,\-\/\s]+/).forEach(p => {
+                    if(/^\d{2}$/.test(p)) { let sw = p[1]+p[0]; if(sw !== p && !rev.includes(sw)) rev.push(sw); }
+                });
+            }
+            return rev;
         }
 
         function submitPortalData() {
@@ -1407,6 +1444,42 @@
                                             parsedSuccess = true;
                                         }
                                     } else {
+                                    /* v218.6: jammed "formulaAmount r reverseAmount" e.g. "6ထိပ်7000r3000" */
+                                    let jammedRMatchA = cleanLine.match(/^(.+?[^0-9\s,.\-\/])(\d{2,})[rR](\d{2,})$/);
+                                    if (jammedRMatchA) {
+                                        let formulaPart = jammedRMatchA[1].trim();
+                                        let mainAmt = parseInt(jammedRMatchA[2], 10);
+                                        let rAmt = parseInt(jammedRMatchA[3], 10);
+                                        let exp = expandFormulaAdvanced(formulaPart);
+                                        let revExp = expandReverseFormula(formulaPart);
+                                        if (exp.length > 0 && mainAmt > 0) {
+                                            exp.forEach(n => {
+                                                listData.push({ id: Number(Date.now() + Math.random()), sessionId: activeSessionId, subUser: subUserName, no: n, amt: mainAmt, target: targetKey, date: now.toLocaleDateString(), time: timeStr, batchNo: null });
+                                            });
+                                            revExp.forEach(rn => {
+                                                listData.push({ id: Number(Date.now() + Math.random() + 1), sessionId: activeSessionId, subUser: subUserName, no: rn, amt: rAmt, target: targetKey, date: now.toLocaleDateString(), time: timeStr, batchNo: null });
+                                            });
+                                            parsedSuccess = true;
+                                        }
+                                    } else {
+                                    /* v218.6: r as amount separator e.g. "4-5-6r1000", "12r500" */
+                                    let rSepMatchA = cleanLine.match(/^(.+?)[rR](\d+)$/);
+                                    if (rSepMatchA) {
+                                        let formulaPart = rSepMatchA[1].trim();
+                                        let amt = parseInt(rSepMatchA[2], 10);
+                                        let exp = expandFormulaAdvanced(formulaPart);
+                                        let isPlainNums = !/ထိပ်|နောက်|ပတ်|ပါ|ဘရိတ်|ရိတ်|ခွေ|ပူး|ပါဝါ|နက္ခတ်|စုံ|ညီအစ်ကို|bk/i.test(formulaPart);
+                                        if (exp.length > 0 && amt > 0) {
+                                            exp.forEach(n => {
+                                                listData.push({ id: Number(Date.now() + Math.random()), sessionId: activeSessionId, subUser: subUserName, no: n, amt, target: targetKey, date: now.toLocaleDateString(), time: timeStr, batchNo: null });
+                                                if (isPlainNums && n.length === 2) {
+                                                    let rev = n[1] + n[0];
+                                                    if (rev !== n) listData.push({ id: Number(Date.now() + Math.random() + 1), sessionId: activeSessionId, subUser: subUserName, no: rev, amt, target: targetKey, date: now.toLocaleDateString(), time: timeStr, batchNo: null });
+                                                }
+                                            });
+                                            parsedSuccess = true;
+                                        }
+                                    } else {
                                     let spaceParts = cleanLine.split(/\s+/);
                                     if(spaceParts.length >= 2) {
                                         let amt = parseInt(spaceParts[spaceParts.length - 1], 10) || 0;
@@ -1417,6 +1490,8 @@
                                             });
                                             parsedSuccess = true;
                                         }
+                                    }
+                                    }
                                     }
                                     }
                                 }
