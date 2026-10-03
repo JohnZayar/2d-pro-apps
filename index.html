@@ -66,8 +66,30 @@
 
         .fab-btn { position: absolute; bottom: 20px; right: 20px; width: 52px; height: 52px; background: #38bdf8; color: #000; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 26px; font-weight: bold; box-shadow: 0 4px 15px rgba(56,189,248,0.4); cursor: pointer; border: none; z-index: 100; }
 
-        .ledger-container { padding: 10px; overflow-y: auto; flex: 1; display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; background: #050505; align-content: start; }
-        .ledger-cell { background: #161b22; border: 1px solid #2d3748; border-radius: 8px; padding: 10px 5px; text-align: center; min-height: 60px; }
+        .ledger-container { padding: 8px; overflow-y: auto; flex: 1; display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; background: #050505; align-content: start; }
+        /* v218: compact ledger summary boxes */
+        .ledger-summary { display: flex; gap: 8px; padding: 8px 10px 4px; background: #050505; }
+        .ledger-sumbox { flex: 1; background: #1a2332; border: 1px solid #3b82f6; border-radius: 10px; padding: 8px 6px; text-align: center; cursor: pointer; user-select: none; -webkit-tap-highlight-color: transparent; }
+        .ledger-sumbox:active { background: #243044; }
+        .ledger-sumbox .sum-label { font-size: 11px; color: #93a4bd; margin-bottom: 2px; }
+        .ledger-sumbox .sum-val { font-size: 18px; font-weight: 700; color: #fff; }
+        .ledger-sumbox .sum-hint { font-size: 10px; color: #5b6b82; margin-top: 2px; }
+        /* v218: limit popup */
+        .limit-popup-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.65); display: none; align-items: center; justify-content: center; z-index: 9999; }
+        .limit-popup { background: #1a2332; border: 1px solid #3b82f6; border-radius: 14px; padding: 20px; width: 82%; max-width: 320px; text-align: center; }
+        .limit-popup h3 { color: #fff; margin: 0 0 12px; font-size: 16px; }
+        .limit-popup input { width: 100%; padding: 12px; font-size: 20px; text-align: center; border-radius: 10px; border: 1px solid #3b82f6; background: #0f1622; color: #fff; margin-bottom: 12px; box-sizing: border-box; }
+        .limit-popup .popup-btns { display: flex; gap: 10px; }
+        .limit-popup .popup-btns button { flex: 1; padding: 11px; border-radius: 10px; border: none; font-size: 15px; font-weight: 600; cursor: pointer; }
+        .limit-popup .btn-save { background: #3b82f6; color: #fff; }
+        .limit-popup .btn-cancel { background: #2d3748; color: #cbd5e1; }
+        .ledger-cell { background: #161b22; border: 1px solid #2d3748; border-radius: 6px; padding: 6px 3px; text-align: center; min-height: 44px; }
+        .ledger-cell .cell-num { font-size: 14px; font-weight: 700; color: #e2e8f0; }
+        .ledger-cell .cell-amt { font-size: 11px; color: #93a4bd; margin-top: 1px; }
+        .ledger-cell.has-data { border-color: #3b82f6; background: #1a2332; }
+        .ledger-cell.has-data .cell-amt { color: #7dd3fc; font-weight: 600; }
+        .ledger-cell.limit-over { border-color: #ef4444; }
+        .ledger-cell.limit-over .cell-amt { color: #fca5a5; }
         .cell-num { font-size: 16px; font-weight: bold; color: #38bdf8; }
         .cell-amt { font-size: 11px; color: #34d399; margin-top: 4px; font-weight: bold; }
         .has-data { background: #1e293b; border-color: #3b82f6; }
@@ -154,16 +176,21 @@
         .form-group input, .form-group select { width: 100%; background: #111827; color: #fff; border: 1px solid #374151; padding: 6px 8px; border-radius: 6px; font-size: 13px; font-weight: bold; outline: none; }
         .btn-modal-action { background: #38bdf8; border: none; color: #000; font-size: 14px; font-weight: bold; text-align: center; width: 100%; padding: 8px; border-radius: 6px; cursor: pointer; margin-top: 4px; }
 
-        .custom-paste-card { background: #1a202c; width: 92%; max-width: 400px; border-radius: 12px; padding: 16px; border: 1px solid #374151; box-shadow: 0 15px 35px rgba(0,0,0,0.9); display: flex; flex-direction: column; gap: 12px; z-index: 100000; max-height: 85vh; overflow-y: auto; }
-        .paste-modal-title { color: #fff; font-size: 15px; font-weight: bold; text-align: center; }
-        .paste-select-box { width: 100%; background: #111827; color: #fff; border: 1px solid #374151; padding: 8px; border-radius: 6px; font-weight: bold; font-size: 13px; outline: none; margin-bottom: 4px; }
-        .paste-textarea-wrapper { background: #111827; border: 1.5px solid #3b82f6; border-radius: 8px; padding: 10px; position: relative; }
-        .paste-textarea-wrapper textarea { width: 100%; height: 150px; background: transparent; color: #fff; border: none; font-size: 13px; font-weight: bold; resize: none; outline: none; line-height: 1.5; user-select: text; -webkit-user-select: text; }
+        /* v218: bigger modern paste board */
+        .custom-paste-card { background: linear-gradient(160deg, #1e293b 0%, #0f172a 100%); width: 95%; max-width: 540px; border-radius: 18px; padding: 20px; border: 1px solid #3b82f6; box-shadow: 0 20px 50px rgba(0,0,0,0.9), 0 0 0 1px rgba(59,130,246,0.15); display: flex; flex-direction: column; gap: 14px; z-index: 100000; max-height: 92vh; overflow-y: auto; }
+        .paste-modal-title { color: #fff; font-size: 18px; font-weight: 800; text-align: center; letter-spacing: 0.3px; }
+        .paste-select-box { width: 100%; background: #0f1622; color: #fff; border: 1px solid #3b82f6; padding: 12px; border-radius: 10px; font-weight: bold; font-size: 15px; outline: none; margin-bottom: 4px; }
+        .paste-textarea-wrapper { background: #0a0f1a; border: 2px solid #3b82f6; border-radius: 12px; padding: 14px; position: relative; box-shadow: inset 0 2px 8px rgba(0,0,0,0.5); }
+        .paste-textarea-wrapper textarea { width: 100%; height: 260px; background: transparent; color: #fff; border: none; font-size: 16px; font-weight: 600; resize: none; outline: none; line-height: 1.7; user-select: text; -webkit-user-select: text; font-family: 'Courier New', monospace; }
+        .paste-textarea-wrapper textarea::placeholder { color: #475569; font-family: inherit; }
         
-        .paste-actions-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 4px; }
-        .btn-paste-cancel { background: #dc2626; color: white; border: none; padding: 10px; border-radius: 6px; font-weight: bold; font-size: 13px; cursor: pointer; text-align: center; }
-        .btn-paste-btn { background: #16a34a; color: white; border: none; padding: 10px; border-radius: 6px; font-weight: bold; font-size: 13px; cursor: pointer; text-align: center; }
-        .btn-paste-save { background: #0284c7; color: white; border: none; padding: 10px; border-radius: 6px; font-weight: bold; font-size: 13px; cursor: pointer; text-align: center; }
+        .paste-actions-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 4px; }
+        .btn-paste-cancel { background: #7f1d1d; color: white; border: none; padding: 14px 8px; border-radius: 10px; font-weight: bold; font-size: 15px; cursor: pointer; text-align: center; }
+        .btn-paste-cancel:active { background: #991b1b; }
+        .btn-paste-btn { background: #15803d; color: white; border: none; padding: 14px 8px; border-radius: 10px; font-weight: bold; font-size: 15px; cursor: pointer; text-align: center; }
+        .btn-paste-btn:active { background: #16a34a; }
+        .btn-paste-save { background: linear-gradient(135deg, #0284c7, #0369a1); color: white; border: none; padding: 14px 8px; border-radius: 10px; font-weight: bold; font-size: 15px; cursor: pointer; text-align: center; box-shadow: 0 4px 12px rgba(2,132,199,0.4); }
+        .btn-paste-save:active { transform: scale(0.97); }
 
         #customConfirmModal { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.85); display: none; align-items: center; justify-content: center; z-index: 100005; backdrop-filter: blur(4px); }
         .confirm-card { background: #1a202c; width: 85%; max-width: 320px; border-radius: 12px; padding: 20px; border: 1px solid #374151; box-shadow: 0 15px 35px rgba(0,0,0,0.9); display: flex; flex-direction: column; gap: 16px; text-align: center; }
@@ -319,7 +346,45 @@
                         <option value="">-- အားလုံးပေါင်းချုပ် (Grand Total) --</option>
                     </select>
                 </div>
+                <!-- v218: summary boxes (tap to set limit rate) -->
+                <div class="ledger-summary">
+                    <div class="ledger-sumbox" onclick="openLimitPopup()">
+                        <div class="sum-label">စုစုပေါင်း</div>
+                        <div class="sum-val" id="ledgerTotalBox">0</div>
+                        <div class="sum-hint">👆 နှိပ်၍ limit ပြင်</div>
+                    </div>
+                    <div class="ledger-sumbox" onclick="openLimitPopup()">
+                        <div class="sum-label">အကွက်</div>
+                        <div class="sum-val" id="ledgerBoxesBox">0</div>
+                        <div class="sum-hint" id="ledgerLimitHint">limit: -</div>
+                    </div>
+                </div>
                 <div class="ledger-container" id="ledgerGridContainer"></div>
+            </div>
+            <!-- v218: limit rate popup -->
+            <div class="limit-popup-overlay" id="limitPopupOverlay" onclick="if(event.target===this)closeLimitPopup()">
+                <div class="limit-popup">
+                    <h3>📦 ၁ ကွက်တန်ဖိုး (Limit)</h3>
+                    <input type="number" id="limitRateInput" inputmode="numeric" placeholder="ဥပမာ 2000">
+                    <div class="popup-btns">
+                        <button class="btn-cancel" onclick="closeLimitPopup()">ပိတ်</button>
+                        <button class="btn-save" onclick="saveLimitRate()">သိမ်း</button>
+                    </div>
+                </div>
+            </div>
+            <!-- v218: edit record popup (long-press) -->
+            <div class="limit-popup-overlay" id="editRecordOverlay" onclick="if(event.target===this)closeEditRecord()">
+                <div class="limit-popup">
+                    <h3>✏️ စာရင်း ပြင်ဆင်ရန်</h3>
+                    <input type="text" id="editRecordNo" inputmode="numeric" placeholder="ဂဏန်း" style="margin-bottom:8px;">
+                    <input type="number" id="editRecordAmt" inputmode="numeric" placeholder="ငွေပမာဏ">
+                    <input type="hidden" id="editRecordId">
+                    <input type="hidden" id="editRecordIsAkan">
+                    <div class="popup-btns">
+                        <button class="btn-cancel" onclick="closeEditRecord()">ပိတ်</button>
+                        <button class="btn-save" onclick="saveEditRecord()">သိမ်း</button>
+                    </div>
+                </div>
             </div>
 
             <div class="page-view" id="pageGyinge">
@@ -1869,6 +1934,123 @@
             select.selectedIndex = 0;
         }
 
+        /* v218: box limit rate (per-box value) — persisted per device */
+        function getBoxLimitRate() {
+            try {
+                let v = parseInt(localStorage.getItem('2d_box_limit_rate') || '0', 10);
+                return v > 0 ? v : 2000;
+            } catch(e) { return 2000; }
+        }
+        function setBoxLimitRate(v) {
+            try { localStorage.setItem('2d_box_limit_rate', String(v)); } catch(e) {}
+        }
+        function openLimitPopup() {
+            let inp = document.getElementById('limitRateInput');
+            if (inp) inp.value = getBoxLimitRate();
+            let ov = document.getElementById('limitPopupOverlay');
+            if (ov) ov.style.display = 'flex';
+            setTimeout(() => { try { inp.focus(); inp.select(); } catch(e) {} }, 100);
+        }
+        function closeLimitPopup() {
+            let ov = document.getElementById('limitPopupOverlay');
+            if (ov) ov.style.display = 'none';
+        }
+        function saveLimitRate() {
+            let inp = document.getElementById('limitRateInput');
+            let v = inp ? parseInt(inp.value.replace(/[^\d]/g, ''), 10) : 0;
+            if (!v || v <= 0) { showMessage("❌ တန်ဖိုး ထည့်ပါ။"); return; }
+            setBoxLimitRate(v);
+            closeLimitPopup();
+            try { renderLedgerGrid(); } catch(e) {}
+            showMessage("✅ Limit သိမ်းပြီးပါပြီ။");
+        }
+
+        /* v218: long-press to edit records */
+        function openEditRecord(recordId, isAkan) {
+            let arr = isAkan ? akanEntries : listData;
+            let item = arr.find(x => Number(x.id) === Number(recordId));
+            if (!item) { showMessage("❌ စာရင်း ရှာမတွေ့ပါ။"); return; }
+            /* don't allow edit after session closed */
+            let sid = Number(item.sessionId);
+            let sess = sessions.find(s => Number(s.id) === sid);
+            if (winningNumbers[sid] || (sess && isSessionTimeExpired(sess))) {
+                showMessage("🔒 ပွဲစဉ် ပိတ်သွားပြီဖြစ်၍ ပြင်ခွင့် မရှိပါ။");
+                return;
+            }
+            document.getElementById('editRecordNo').value = item.no;
+            document.getElementById('editRecordAmt').value = item.amt || item.amount || 0;
+            document.getElementById('editRecordId').value = item.id;
+            document.getElementById('editRecordIsAkan').value = isAkan ? '1' : '0';
+            document.getElementById('editRecordOverlay').style.display = 'flex';
+        }
+        function closeEditRecord() {
+            document.getElementById('editRecordOverlay').style.display = 'none';
+        }
+        function saveEditRecord() {
+            let id = document.getElementById('editRecordId').value;
+            let isAkan = document.getElementById('editRecordIsAkan').value === '1';
+            let newNo = document.getElementById('editRecordNo').value.trim();
+            let newAmt = parseInt((document.getElementById('editRecordAmt').value || '').replace(/[^\d]/g, ''), 10) || 0;
+            if (!newNo) { showMessage("❌ ဂဏန်း ထည့်ပါ။"); return; }
+            if (newAmt <= 0) { showMessage("❌ ငွေပမာဏ ထည့်ပါ။"); return; }
+            let arr = isAkan ? akanEntries : listData;
+            let item = arr.find(x => Number(x.id) === Number(id));
+            if (!item) { showMessage("❌ စာရင်း ရှာမတွေ့ပါ။"); return; }
+            item.no = newNo;
+            item.amt = newAmt;
+            closeEditRecord();
+            if (isAkan) {
+                cloudSync.set(AKAN_KEY, akanEntries, () => { try { renderAkanTable(); } catch(e) {} });
+            } else {
+                cloudSync.set(STORAGE_KEY, listData, () => { try { renderPosTable(); } catch(e) {} });
+            }
+            showMessage("✅ ပြင်ဆင်ပြီးပါပြီ။");
+        }
+        /* long-press detection (touch + mouse) */
+        (function initLongPress() {
+            let timer = null, targetRow = null;
+            const LONG_MS = 550;
+            function rowFromEvent(e) {
+                let t = e.target;
+                while (t && t !== document.body) {
+                    if (t.classList && t.classList.contains('lp-row')) return t;
+                    t = t.parentNode;
+                }
+                return null;
+            }
+            function start(e, row) {
+                cancel();
+                targetRow = row;
+                timer = setTimeout(() => {
+                    timer = null;
+                    let rid = targetRow.getAttribute('data-rid');
+                    let akan = targetRow.getAttribute('data-akan') === '1';
+                    try { if (navigator.vibrate) navigator.vibrate(40); } catch(err) {}
+                    openEditRecord(rid, akan);
+                    targetRow = null;
+                }, LONG_MS);
+            }
+            function cancel() {
+                if (timer) { clearTimeout(timer); timer = null; }
+                targetRow = null;
+            }
+            document.addEventListener('touchstart', (e) => {
+                let row = rowFromEvent(e);
+                if (row) start(e, row);
+            }, { passive: true });
+            document.addEventListener('touchend', cancel, { passive: true });
+            document.addEventListener('touchmove', cancel, { passive: true });
+            document.addEventListener('touchcancel', cancel, { passive: true });
+            document.addEventListener('mousedown', (e) => {
+                let row = rowFromEvent(e);
+                if (row) start(e, row);
+            });
+            document.addEventListener('mouseup', cancel);
+            document.addEventListener('contextmenu', (e) => {
+                if (rowFromEvent(e)) e.preventDefault();
+            });
+        })();
+
         function renderLedgerGrid() {
             let container = document.getElementById('ledgerGridContainer');
             if(!container) return;
@@ -1913,9 +2095,11 @@
 
             let currentLimit = limitsData[currentSessionId] || 50000;
             let html = '';
+            let grandTotal = 0;
             for(let i=0; i<=99; i++) {
                 let numStr = i < 10 ? '0' + i : '' + i;
                 let amt = sums[numStr] || 0;
+                grandTotal += amt;
                 let isOverLimit = amt > currentLimit;
                 let cellClass = amt > 0 ? (isOverLimit ? 'has-data limit-over' : 'has-data') : '';
 
@@ -1925,6 +2109,17 @@
                 </div>`;
             }
             container.innerHTML = html;
+            /* v218: update summary boxes */
+            try {
+                let rate = getBoxLimitRate();
+                let boxes = rate > 0 ? Math.round((grandTotal / rate) * 10) / 10 : 0;
+                let tEl = document.getElementById('ledgerTotalBox');
+                let bEl = document.getElementById('ledgerBoxesBox');
+                let hEl = document.getElementById('ledgerLimitHint');
+                if (tEl) tEl.innerText = grandTotal.toLocaleString();
+                if (bEl) bEl.innerText = boxes.toLocaleString();
+                if (hEl) hEl.innerText = 'limit: ' + rate.toLocaleString();
+            } catch(e) {}
         }
 
         function refreshGyingeDropdown() {
@@ -2287,7 +2482,7 @@
 
             let html = '';
             filteredList.slice().reverse().forEach(item => {
-                html += `<tr><td><b>${item.no}</b></td><td>${item.amt.toLocaleString()} ကျပ်</td><td style="text-align: center;"><button class="trash-btn" onclick="deleteAkanItem(${Number(item.id)})">🗑️</button></td></tr>`;
+                html += `<tr class="lp-row" data-rid="${Number(item.id)}" data-akan="1"><td><b>${item.no}</b></td><td>${item.amt.toLocaleString()} ကျပ်</td><td style="text-align: center;"><button class="trash-btn" onclick="deleteAkanItem(${Number(item.id)})">🗑️</button></td></tr>`;
             });
             tbody.innerHTML = html;
         }
@@ -2640,7 +2835,7 @@
 
             let html = '';
             filteredList.slice().reverse().forEach(item => {
-                html += `<tr><td><b>${item.no}</b></td><td>${(item.amt || item.amount).toLocaleString()} ကျပ်</td><td style="text-align: center;"><button class="trash-btn" onclick="deletePosItem(${Number(item.id)})">🗑️</button></td></tr>`;
+                html += `<tr class="lp-row" data-rid="${Number(item.id)}" data-akan="0"><td><b>${item.no}</b></td><td>${(item.amt || item.amount).toLocaleString()} ကျပ်</td><td style="text-align: center;"><button class="trash-btn" onclick="deletePosItem(${Number(item.id)})">🗑️</button></td></tr>`;
             });
             tbody.innerHTML = html;
         }
