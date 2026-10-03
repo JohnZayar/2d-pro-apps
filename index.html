@@ -1716,7 +1716,14 @@
                 }
             } else if(cleanText.endsWith('R') || cleanText.endsWith('r')) {
                 let cleanNo = cleanText.replace(/R|r/g, '').trim();
-                if(cleanNo.length === 2) { generatedNums.push(cleanNo, cleanNo[1] + cleanNo[0]); }
+                /* v218.4: handle "34r 35r 36r" list — expand each with reverse */
+                let rParts = cleanNo.split(/[\s,.\-\/]+/).filter(p => p.length > 0);
+                if(rParts.length > 1) {
+                    rParts.forEach(p => {
+                        if(p.length === 2) { generatedNums.push(p); let rv = p[1]+p[0]; if(rv !== p) generatedNums.push(rv); }
+                        else if(p.length > 0) generatedNums.push(p);
+                    });
+                } else if(cleanNo.length === 2) { generatedNums.push(cleanNo, cleanNo[1] + cleanNo[0]); }
                 else if(cleanNo.length === 3) { 
                     let d = cleanNo.split('');
                     for(let i=0; i<d.length; i++) {
@@ -1732,7 +1739,8 @@
                 let d = cleanText.replace('နောက်', '').trim() || '5';
                 for(let i=0; i<=9; i++) generatedNums.push(`${i}${d}`);
             } else if(cleanText.includes('ပတ်')) {
-                let d = cleanText.replace('ပတ်', '').trim() || '5';
+                /* v218.4: strip အပတ်/ပတ်, keep only digit (fixes "1အပတ်" → d="1") */
+                let d = cleanText.replace(/အပတ်|ပတ်/g, '').replace(/[^\d]/g, '').slice(-1) || '5';
                 let setNums = new Set();
                 for(let i=0; i<=9; i++) { setNums.add(`${d}${i}`); setNums.add(`${i}${d}`); }
                 generatedNums = Array.from(setNums);
@@ -2724,6 +2732,29 @@
                             parsedSuccess = true;
                         }
                     } else {
+                        /* v218.4: "numbers amount r reverseAmount" e.g. "12,13,14 500r100" */
+                        let spaceRMatch2 = convertedLine.match(/^(.+?)\s+(\d+)\s*[rR]\s*(\d+)$/);
+                        if (spaceRMatch2) {
+                            let formulaPart = spaceRMatch2[1].trim();
+                            let mainAmt = parseInt(spaceRMatch2[2], 10);
+                            let rAmt = parseInt(spaceRMatch2[3], 10);
+                            let exp = expandFormula(formulaPart);
+                            if (exp.length > 0 && mainAmt > 0) {
+                                exp.forEach(numStr => {
+                                    if (closedNumsList.includes(numStr)) { hasClosedError = true; return; }
+                                    let entryObj = { id: Number(Date.now() + Math.random()), sessionId: Number(currentSessionId), no: numStr, amt: mainAmt, target: targetKey, date: now.toLocaleDateString(), time: timeStr, batchNo: null };
+                                    if(activePage === 'pageAkanDain') akanEntries.push(entryObj); else listData.push(entryObj);
+                                    if (numStr.length === 2) {
+                                        let revNum = numStr[1] + numStr[0];
+                                        if (revNum !== numStr && !closedNumsList.includes(revNum)) {
+                                            let revObj = { id: Number(Date.now() + Math.random() + 1), sessionId: Number(currentSessionId), no: revNum, amt: rAmt, target: targetKey, date: now.toLocaleDateString(), time: timeStr, batchNo: null };
+                                            if(activePage === 'pageAkanDain') akanEntries.push(revObj); else listData.push(revObj);
+                                        }
+                                    }
+                                });
+                                parsedSuccess = true;
+                            }
+                        } else {
                         let rSpaceMatch = convertedLine.match(/^(.*?[\d]+[rR])\s*(\d+)$/i);
                         if(rSpaceMatch) {
                             let leftPart = rSpaceMatch[1].trim();
@@ -2789,6 +2820,7 @@
                         }
                     }
                 }
+            }
 
                 if(!parsedSuccess) {
                     unparsedLines.push(cleanLine);

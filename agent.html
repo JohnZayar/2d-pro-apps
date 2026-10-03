@@ -1113,7 +1113,8 @@
             cleanText = cleanText.replace(/အာ/g, 'r').replace(/ရ/g, 'r');
             let results = [];
 
-            if(cleanText.includes('ခွေပူးပါ') || cleanText.includes('ခွေပူး')) {
+            /* v218.4: ခွေ+ပူး combo (e.g. 34567ခွေအပူးပါ → all pairs incl. doubles) */
+            if(cleanText.includes('ခွေ') && cleanText.includes('ပူး')) {
                 let digits = cleanText.replace(/[^\d]/g, '') || '123';
                 let uDigits = Array.from(new Set(digits.split('')));
                 let setN = new Set();
@@ -1133,7 +1134,8 @@
                 let d = cleanText.replace('နောက်','').trim() || '5';
                 for(let i=0; i<=9; i++) results.push(`${i}${d}`);
             } else if(cleanText.includes('ပတ်')) {
-                let d = cleanText.replace('ပတ်','').trim() || '5';
+                /* v218.4: strip အပတ်/ပတ်, keep only digit (fixes "1အပတ်" → d="1") */
+                let d = cleanText.replace(/အပတ်|ပတ်/g, '').replace(/[^\d]/g, '').slice(-1) || '5';
                 let setN = new Set();
                 for(let i=0; i<=9; i++) { setN.add(`${d}${i}`); setN.add(`${i}${d}`); }
                 results = Array.from(setN);
@@ -1166,8 +1168,15 @@
                 for(let i=1; i<=9; i+=2) for(let j=0; j<=9; j+=2) results.push(`${i}${j}`);
             } else if(cleanText.endsWith('R') || cleanText.endsWith('r')) {
                 /* v218.3: R = reverse (e.g. 12R → 12, 21) */
+                /* v218.4: handle "34r 35r 36r" list — expand each with reverse */
                 let cleanNo = cleanText.replace(/R|r/g, '').trim();
-                if(cleanNo.length === 2) { results.push(cleanNo, cleanNo[1] + cleanNo[0]); }
+                let rPartsA = cleanNo.split(/[\s,.\-\/]+/).filter(p => p.length > 0);
+                if(rPartsA.length > 1) {
+                    rPartsA.forEach(p => {
+                        if(p.length === 2) { results.push(p); let rv = p[1]+p[0]; if(rv !== p) results.push(rv); }
+                        else if(p.length > 0) results.push(p);
+                    });
+                } else if(cleanNo.length === 2) { results.push(cleanNo, cleanNo[1] + cleanNo[0]); }
                 else if(cleanNo.length === 3) {
                     let d = cleanNo.split('');
                     for(let i=0; i<d.length; i++) for(let j=0; j<d.length; j++) {
@@ -1380,6 +1389,24 @@
                                         parsedSuccess = true;
                                     }
                                 } else {
+                                    /* v218.4: "numbers amount r reverseAmount" e.g. "12,13,14 500r100" */
+                                    let spaceRMatchA = cleanLine.match(/^(.+?)\s+(\d+)\s*[rR]\s*(\d+)$/);
+                                    if (spaceRMatchA) {
+                                        let formulaPart = spaceRMatchA[1].trim();
+                                        let mainAmt = parseInt(spaceRMatchA[2], 10);
+                                        let rAmt = parseInt(spaceRMatchA[3], 10);
+                                        let exp = expandFormulaAdvanced(formulaPart);
+                                        if (exp.length > 0 && mainAmt > 0) {
+                                            exp.forEach(n => {
+                                                listData.push({ id: Number(Date.now() + Math.random()), sessionId: activeSessionId, subUser: subUserName, no: n, amt: mainAmt, target: targetKey, date: now.toLocaleDateString(), time: timeStr, batchNo: null });
+                                                if (n.length === 2) {
+                                                    let rev = n[1] + n[0];
+                                                    if (rev !== n) listData.push({ id: Number(Date.now() + Math.random() + 1), sessionId: activeSessionId, subUser: subUserName, no: rev, amt: rAmt, target: targetKey, date: now.toLocaleDateString(), time: timeStr, batchNo: null });
+                                                }
+                                            });
+                                            parsedSuccess = true;
+                                        }
+                                    } else {
                                     let spaceParts = cleanLine.split(/\s+/);
                                     if(spaceParts.length >= 2) {
                                         let amt = parseInt(spaceParts[spaceParts.length - 1], 10) || 0;
@@ -1390,6 +1417,7 @@
                                             });
                                             parsedSuccess = true;
                                         }
+                                    }
                                     }
                                 }
                             }
