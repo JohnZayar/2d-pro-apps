@@ -11,6 +11,7 @@
     <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
     <!-- Firebase Realtime Database SDK -->
     <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: sans-serif; -webkit-tap-highlight-color: transparent; }
         html, body { width: 100vw; height: 100vh; height: 100dvh; overflow: hidden; background-color: #050505; color: #fff; display: flex; justify-content: center; align-items: center; }
@@ -30,6 +31,9 @@
 
         /* Login Screen Style */
         #loginOverlay { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: #0b0f17; z-index: 999998; display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 20px; text-align: center; }
+        /* Main link overlay (multi-tenant v217) — sits above the agent login until linked */
+        #linkOverlay { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: #0b0f17; z-index: 1000000; display: none; flex-direction: column; justify-content: center; align-items: center; padding: 20px; text-align: center; }
+        #linkErr { color: #f87171; font-size: 12px; min-height: 16px; }
         .login-card { background: #1a202c; width: 100%; max-width: 340px; border-radius: 14px; padding: 24px; border: 1px solid #374151; box-shadow: 0 10px 25px rgba(0,0,0,0.8); display: flex; flex-direction: column; gap: 14px; position: relative; z-index: 999999; }
         .login-card h3 { color: #38bdf8; font-size: 18px; margin-bottom: 4px; }
         .login-card p { color: #9ca3af; font-size: 12px; line-height: 1.5; }
@@ -141,12 +145,12 @@
         } catch(e) { db = null; firebaseSdkOk = false; }
 
         /* =====================================================================
-           Connection engine v216 - works even where websockets are blocked.
-           Transport priority: Firebase realtime SDK -> REST (plain HTTPS).
-           - Safe storage (memory fallback if localStorage throws).
-           - cloudSync.get: SDK (with retry) -> REST fallback.
-           - cloudSync.set: local cache -> SDK write; REST write too when the
-             socket is down/unknown (idempotent, same value).
+           Multi-tenant connection engine v217.
+           - Tenant isolation: every key is scoped under mains/{tenantId}/
+             once a tenant is set. Keys starting with '/' are absolute.
+           - Transport priority: Firebase realtime SDK -> REST (plain HTTPS).
+           - REST calls carry the Firebase Auth ID token (?auth=) so they
+             keep working after per-tenant security rules are locked down.
            - Pill: realtime online / REST mode / offline / SDK-missing.
            ===================================================================== */
         const __memStore = {};
@@ -163,50 +167,98 @@
             try { delete __memStore[k]; } catch(e2) {}
         }
 
+        /* ---- Tenant scoping ---- */
+        let __tenantId = null;
+        function setTenantId(id) { __tenantId = id || null; }
+        function getTenantId() { return __tenantId; }
+        function tp(key) {
+            // Resolve a data key to its full DB path.
+            // Leading '/' = absolute path (no tenant prefix). '.info/' untouched.
+            if (!key) return key;
+            if (key.charAt(0) === '/') return key.slice(1);
+            if (key.indexOf('.info/') === 0) return key;
+            return __tenantId ? ('mains/' + __tenantId + '/' + key) : key;
+        }
+
+        /* ---- Auth ID token for REST calls ---- */
+        let __idToken = null, __tokenExp = 0;
+        function refreshIdToken(force) {
+            try {
+                const u = (typeof firebase !== 'undefined' && firebase.auth) ? firebase.auth().currentUser : null;
+                if (!u) { __idToken = null; __tokenExp = 0; return Promise.resolve(null); }
+                if (!force && __idToken && Date.now() < __tokenExp) return Promise.resolve(__idToken);
+                return u.getIdToken(!!force).then(t => {
+                    __idToken = t; __tokenExp = Date.now() + 50 * 60 * 1000;
+                    return t;
+                }).catch(() => __idToken);
+            } catch(e) { return Promise.resolve(__idToken); }
+        }
+        try {
+            if (typeof firebase !== 'undefined' && firebase.auth) {
+                firebase.auth().onAuthStateChanged(() => { refreshIdToken(true); });
+            }
+        } catch(e) {}
+        try { setInterval(() => { refreshIdToken(true); }, 45 * 60 * 1000); } catch(e) {}
+        function withAuth(url, tok) {
+            if (!tok) return url;
+            return url + (url.indexOf('?') >= 0 ? '&auth=' : '?auth=') + encodeURIComponent(tok);
+        }
+
         const REST_BASE = (typeof firebaseConfig !== 'undefined' && firebaseConfig.databaseURL)
             ? firebaseConfig.databaseURL.replace(/\/+$/, '') : '';
 
-        window.__restOk = null;    // plain-HTTPS reachability of the DB host
-        window.__socketOk = null;  // realtime socket state: true / false / null (unknown)
+        window.__restOk = null;
+        window.__socketOk = null;
 
         function restGet(key, callback) {
-            // callback(value|null); refreshes window.__restOk on the way
-            try {
-                if (!REST_BASE) { window.__restOk = false; try { refreshPillDetail(); } catch(e) {} callback(null); return; }
-                const ctrl = new AbortController();
-                const timer = setTimeout(() => { try { ctrl.abort(); } catch(e) {} }, 12000);
-                fetch(REST_BASE + '/' + key + '.json', { signal: ctrl.signal, cache: 'no-store' })
-                    .then(r => {
-                        clearTimeout(timer);
-                        window.__restOk = (r.status === 200);
-                        try { refreshPillDetail(); } catch(e) {}
-                        if (!r.ok) throw 0;
-                        return r.json();
-                    })
-                    .then(v => callback(v === undefined ? null : v))
-                    .catch(() => callback(null));
-            } catch(e) { callback(null); }
+            const pkey = tp(key);
+            const go = (tok) => {
+                try {
+                    if (!REST_BASE) { window.__restOk = false; try { refreshPillDetail(); } catch(e) {} callback(null); return; }
+                    const ctrl = new AbortController();
+                    const timer = setTimeout(() => { try { ctrl.abort(); } catch(e) {} }, 12000);
+                    fetch(withAuth(REST_BASE + '/' + pkey + '.json', tok), { signal: ctrl.signal, cache: 'no-store' })
+                        .then(r => {
+                            clearTimeout(timer);
+                            window.__restOk = (r.status === 200);
+                            try { refreshPillDetail(); } catch(e) {}
+                            if (!r.ok) throw 0;
+                            return r.json();
+                        })
+                        .then(v => callback(v === undefined ? null : v))
+                        .catch(() => callback(null));
+                } catch(e) { callback(null); }
+            };
+            try { refreshIdToken(false).then(go).catch(() => go(__idToken)); } catch(e) { go(__idToken); }
         }
         function restSet(key, value, callback) {
-            try {
-                if (!REST_BASE) { if (callback) callback(false); return; }
-                const ctrl = new AbortController();
-                const timer = setTimeout(() => { try { ctrl.abort(); } catch(e) {} }, 12000);
-                fetch(REST_BASE + '/' + key + '.json', {
-                    method: 'PUT', signal: ctrl.signal, cache: 'no-store',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(value === undefined ? null : value)
-                }).then(r => { clearTimeout(timer); if (callback) callback(r.ok); })
-                  .catch(() => { if (callback) callback(false); });
-            } catch(e) { if (callback) callback(false); }
+            const pkey = tp(key);
+            const go = (tok) => {
+                try {
+                    if (!REST_BASE) { if (callback) callback(false); return; }
+                    const ctrl = new AbortController();
+                    const timer = setTimeout(() => { try { ctrl.abort(); } catch(e) {} }, 12000);
+                    fetch(withAuth(REST_BASE + '/' + pkey + '.json', tok), {
+                        method: 'PUT', signal: ctrl.signal, cache: 'no-store',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(value === undefined ? null : value)
+                    }).then(r => { clearTimeout(timer); if (callback) callback(r.ok); })
+                      .catch(() => { if (callback) callback(false); });
+                } catch(e) { if (callback) callback(false); }
+            };
+            try { refreshIdToken(false).then(go).catch(() => go(__idToken)); } catch(e) { go(__idToken); }
         }
-        function restDelete(callback) {
-            try {
-                if (!REST_BASE) { if (callback) callback(false); return; }
-                fetch(REST_BASE + '/.json', { method: 'DELETE', cache: 'no-store' })
-                    .then(r => { if (callback) callback(r.ok); })
-                    .catch(() => { if (callback) callback(false); });
-            } catch(e) { if (callback) callback(false); }
+        function restDelete(fullPath, callback) {
+            // fullPath: already-resolved DB path (no tenant prefixing here)
+            const go = (tok) => {
+                try {
+                    if (!REST_BASE) { if (callback) callback(false); return; }
+                    fetch(withAuth(REST_BASE + '/' + fullPath + '.json', tok), { method: 'DELETE', cache: 'no-store' })
+                        .then(r => { if (callback) callback(r.ok); })
+                        .catch(() => { if (callback) callback(false); });
+                } catch(e) { if (callback) callback(false); }
+            };
+            try { refreshIdToken(false).then(go).catch(() => go(__idToken)); } catch(e) { go(__idToken); }
         }
 
         function runRestCheck(cb) {
@@ -217,11 +269,16 @@
             };
             try {
                 if (!REST_BASE) { done(false); return; }
+                const target = __tenantId ? ('mains/' + __tenantId + '/public') : '';
+                const urlPath = target ? ('/' + target + '.json') : '/.json';
                 const ctrl = new AbortController();
                 const timer = setTimeout(() => { try { ctrl.abort(); } catch(e) {} }, 9000);
-                fetch(REST_BASE + '/.json?shallow=true', { signal: ctrl.signal, cache: 'no-store' })
-                    .then(r => { clearTimeout(timer); done(r.status === 200); })
-                    .catch(() => { clearTimeout(timer); done(false); });
+                const go = (tok) => {
+                    fetch(withAuth(REST_BASE + urlPath + '?shallow=true', tok), { signal: ctrl.signal, cache: 'no-store' })
+                        .then(r => { clearTimeout(timer); done(r.status === 200); })
+                        .catch(() => { clearTimeout(timer); done(false); });
+                };
+                try { refreshIdToken(false).then(go).catch(() => go(__idToken)); } catch(e) { go(__idToken); }
             } catch(e) { done(false); }
         }
 
@@ -268,7 +325,8 @@
 
         const cloudSync = {
             get(key, callback) {
-                let localData = safeGetItem('cache_' + key);
+                const pkey = tp(key);
+                let localData = safeGetItem('cache_' + pkey);
                 let answered = false;
                 let done = false;
                 let safetyTimer = null;
@@ -284,13 +342,12 @@
                 }
 
                 const deliverRest = () => {
-                    // REST transport: works even where the realtime socket is blocked
                     if (!REST_BASE) { if (!answered) { answered = true; finish(null); } return; }
                     setConnStatus(window.__restOk === false ? 'offline' : 'restmode');
                     restGet(key, (val) => {
                         if (val !== null && val !== undefined) {
                             const strVal = JSON.stringify(val);
-                            safeSetItem('cache_' + key, strVal);
+                            safeSetItem('cache_' + pkey, strVal);
                             if (localData !== strVal || !answered) { answered = true; finish(val); }
                         } else if (!answered) { answered = true; finish(null); }
                     });
@@ -310,12 +367,12 @@
                         else { try { clearTimeout(safetyTimer); } catch(e) {} deliverRest(); }
                     }, TRY_TIMEOUT);
                     try {
-                        db.ref(key).once('value', (snapshot) => {
+                        db.ref(pkey).once('value', (snapshot) => {
                             try { clearTimeout(safetyTimer); } catch(e) {}
                             const val = snapshot.val();
                             if (val !== null && val !== undefined) {
                                 const strVal = JSON.stringify(val);
-                                safeSetItem('cache_' + key, strVal);
+                                safeSetItem('cache_' + pkey, strVal);
                                 if (localData !== strVal || !answered) { answered = true; finish(val); }
                             } else if (!answered) { answered = true; finish(null); }
                         }, () => {
@@ -330,15 +387,14 @@
                 attempt();
             },
             set(key, value, callback) {
-                safeSetItem('cache_' + key, JSON.stringify(value));
+                const pkey = tp(key);
+                safeSetItem('cache_' + pkey, JSON.stringify(value));
                 if (callback) callback();
                 const socketUp = (window.__socketOk === true);
                 if (db && socketUp) {
-                    try { db.ref(key).set(value).then(() => {}).catch(() => {}); } catch(e) {}
+                    try { db.ref(pkey).set(value).then(() => {}).catch(() => {}); } catch(e) {}
                 } else {
-                    // Socket down or unknown: write via REST now (idempotent);
-                    // also hand to the SDK so it flushes if the socket recovers.
-                    if (db) { try { db.ref(key).set(value).then(() => {}).catch(() => {}); } catch(e) {} }
+                    if (db) { try { db.ref(pkey).set(value).then(() => {}).catch(() => {}); } catch(e) {} }
                     restSet(key, value);
                 }
             }
@@ -350,27 +406,31 @@
             try { if (typeof refreshHomeSessions === 'function') { refreshHomeSessions(); } } catch(e) {}
         }
 
-        try {
-            if (!firebaseSdkOk || !db) {
-                runRestCheck((ok) => setConnStatus(ok ? 'restmode' : 'offline'));
-            } else {
-                setConnStatus('connecting');
-                db.ref('.info/connected').on('value', (snap) => {
-                    const online = snap.val() === true;
-                    window.__socketOk = online;
-                    if (online) {
-                        setConnStatus('online');
-                        if (!__cloudWasOnline) { try { resyncCloudData(); } catch(e) {} }
-                    } else {
-                        runRestCheck((ok) => setConnStatus(ok ? 'restmode' : 'offline'));
-                    }
-                    __cloudWasOnline = online;
-                });
-                window.addEventListener('offline', () => { window.__socketOk = false; setConnStatus('offline'); });
-                window.addEventListener('online', () => setConnStatus('connecting'));
-            }
-        } catch(e) { setConnStatus('offline'); }
-        try { runRestCheck(); } catch(e) {}
+        function startCloudMonitor() {
+            if (window.__monitorStarted) return;
+            window.__monitorStarted = true;
+            try {
+                if (!firebaseSdkOk || !db) {
+                    runRestCheck((ok) => setConnStatus(ok ? 'restmode' : 'offline'));
+                } else {
+                    setConnStatus('connecting');
+                    db.ref('.info/connected').on('value', (snap) => {
+                        const online = snap.val() === true;
+                        window.__socketOk = online;
+                        if (online) {
+                            setConnStatus('online');
+                            if (!__cloudWasOnline) { try { resyncCloudData(); } catch(e) {} }
+                        } else {
+                            runRestCheck((ok) => setConnStatus(ok ? 'restmode' : 'offline'));
+                        }
+                        __cloudWasOnline = online;
+                    });
+                    window.addEventListener('offline', () => { window.__socketOk = false; setConnStatus('offline'); });
+                    window.addEventListener('online', () => setConnStatus('connecting'));
+                }
+            } catch(e) { setConnStatus('offline'); }
+            try { runRestCheck(); } catch(e) {}
+        }
     </script>
 
     <div id="customAlert"></div>
@@ -383,6 +443,17 @@
             <div style="background: #111827; padding: 8px; border-radius: 6px; border: 1px dashed #38bdf8; font-size: 14px; color: #38bdf8; font-weight: bold;" id="myDeviceIDDisplay">Loading...</div>
             <input type="text" id="adminActivationKeyInput" class="lock-input" placeholder="Activation Key ထည့်ပါ">
             <button class="lock-btn" onclick="verifyDynamicActivationKey()">အစစ်ဆေးခံမည် (Activate)</button>
+        </div>
+    </div>
+
+    <!-- Main Link Screen (multi-tenant v217) -->
+    <div id="linkOverlay">
+        <div class="login-card">
+            <h3>🔗 Main ချိတ်ဆက်ရန်</h3>
+            <p>သင့်ဒိုင် (Master) ဆီက ရတဲ့ <b>ချိတ်ဆက်ကုဒ်</b> ကို ထည့်ပါ။<br>တစ်ခါထည့်ရင် နောက်ပိုင်း auto-ချိတ်မယ်။</p>
+            <input type="text" id="linkCodeInput" class="login-input" placeholder="ချိတ်ဆက်ကုဒ်">
+            <div id="linkErr"></div>
+            <button class="login-btn" onclick="submitLinkCode()">ချိတ်ဆက်မည်</button>
         </div>
     </div>
 
@@ -475,6 +546,7 @@
             <div class="top-actions">
                 <button class="top-btn" onclick="switchPortalPage('Home')">🏠 ပင်မ</button>
                 <button class="top-btn" onclick="openGuideModal()">📖 လမ်းညွှန်</button>
+                <button class="top-btn" onclick="unlinkMain()" title="Main ချိတ်ဆက်မှုဖျက်ရန်">🔗</button>
                 <button class="top-btn top-btn-logout" onclick="portalLogout()">ထွက်</button>
             </div>
         </div>
@@ -1479,8 +1551,97 @@
         }
         function closeWinningModal() { document.getElementById('winningModal').style.display = 'none'; }
 
-        checkLoginState();
-        setFocusBox('no');
+        /* ---- Multi-tenant Main linking (v217) ---- */
+        let __agentBooted = false;
+        function showLinkOverlay(msg) {
+            const el = document.getElementById('linkOverlay');
+            if (el) el.style.display = 'flex';
+            if (msg !== undefined) linkErr(msg);
+        }
+        function hideLinkOverlay() {
+            const el = document.getElementById('linkOverlay');
+            if (el) el.style.display = 'none';
+        }
+        function linkErr(msg) {
+            const el = document.getElementById('linkErr');
+            if (el) el.textContent = msg || '';
+        }
+        function ensureAnonAuth(cb) {
+            try {
+                if (typeof firebase === 'undefined' || !firebase.auth) { cb(); return; }
+                const au = firebase.auth();
+                if (au.currentUser) {
+                    refreshIdToken(false).then(() => cb()).catch(() => cb());
+                    return;
+                }
+                au.signInAnonymously()
+                    .then(() => refreshIdToken(true).then(() => cb()).catch(() => cb()))
+                    .catch(() => cb());
+            } catch(e) { cb(); }
+        }
+        function verifyLinkCode(code, cb) {
+            // absolute path: /mains/{code}/public (no tenant prefix)
+            try {
+                cloudSync.get('/mains/' + code + '/public', (pub) => {
+                    cb(!!(pub && pub.name), pub && pub.name);
+                });
+            } catch(e) { cb(false); }
+        }
+        function submitLinkCode() {
+            const code = document.getElementById('linkCodeInput').value.trim();
+            if (!code) { linkErr('ကုဒ် ထည့်ပါ။'); return; }
+            linkErr('စစ်ဆေးနေသည်…');
+            verifyLinkCode(code, (ok, name) => {
+                if (!ok) { linkErr('❌ ကုဒ် မမှန်ပါ — ဒိုင်ဆီက ကုဒ်အမှန် ပြန်တောင်းပါ။'); return; }
+                let uid = null;
+                try { uid = firebase.auth().currentUser ? firebase.auth().currentUser.uid : null; } catch(e) {}
+                const saveLink = () => {
+                    safeSetItem('2d_link_main', code);
+                    setTenantId(code);
+                    try { startCloudMonitor(); } catch(e) {}
+                    hideLinkOverlay();
+                    showMessage('✅ "' + name + '" နဲ့ ချိတ်ဆက်ပြီးပြီ');
+                    checkLoginState();
+                };
+                if (uid) {
+                    // register this device under the Main so security rules allow access
+                    try { cloudSync.set('/userMains/' + uid, code, saveLink); }
+                    catch(e) { saveLink(); }
+                } else { saveLink(); }
+            });
+        }
+        function unlinkMain() {
+            if (!confirm('Main ချိတ်ဆက်မှု ဖျက်မှာ သေချာပါသလား?')) return;
+            safeRemoveItem('2d_link_main');
+            setTenantId(null);
+            try { portalLogout(); } catch(e) {}
+            showLinkOverlay('');
+        }
+        function bootAgent() {
+            if (__agentBooted) return;
+            __agentBooted = true;
+            ensureAnonAuth(() => {
+                const linked = safeGetItem('2d_link_main');
+                if (linked) {
+                    verifyLinkCode(linked, (ok) => {
+                        if (ok) {
+                            setTenantId(linked);
+                            try { startCloudMonitor(); } catch(e) {}
+                            hideLinkOverlay();
+                            checkLoginState();
+                        } else {
+                            setTenantId(null);
+                            showLinkOverlay('ချိတ်ဆက်ကုဒ် မမှန်တော့ပါ — ပြန်ထည့်ပါ။');
+                        }
+                    });
+                } else {
+                    showLinkOverlay('');
+                }
+                try { setFocusBox('no'); } catch(e) {}
+            });
+        }
+
+        bootAgent();
     </script>
 
     <!-- Service Worker Register လုပ်ခြင်း -->
