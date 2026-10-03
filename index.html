@@ -616,6 +616,7 @@
             // state: 'online' | 'offline' | 'connecting' | 'sdkmissing'
             const pills = document.querySelectorAll('.conn-pill');
             pills.forEach((el) => {
+                el.dataset.state = state;
                 if (state === 'online') {
                     el.textContent = '🟢 ချိတ်ဆက်ထားသည်';
                     el.style.background = '#064e3b'; el.style.color = '#6ee7b7'; el.style.borderColor = '#10b981';
@@ -630,6 +631,34 @@
                     el.style.background = '#78350f'; el.style.color = '#fcd34d'; el.style.borderColor = '#f59e0b';
                 }
             });
+            refreshPillDetail();
+        }
+
+        /* REST diagnostic: plain-HTTPS check to the DB host (no websocket).
+           Tells "server unreachable" apart from "websocket blocked". */
+        window.__restOk = null;
+        function refreshPillDetail() {
+            document.querySelectorAll('.conn-pill').forEach((el) => {
+                const st = el.dataset.state;
+                if (st === 'offline') {
+                    if (window.__restOk === true) el.textContent = '🔴 ဆာဗာ ရောက်တယ် · socket ပိတ်နေပုံရတယ်';
+                    else if (window.__restOk === false) el.textContent = '🔴 ဆာဗာကို လုံးဝ မရောက်ဘူး';
+                } else if (st === 'sdkmissing') {
+                    if (window.__restOk === true) el.textContent = '🔴 SDK တင်မရပါ · ဆာဗာတော့ ရောက်တယ်';
+                    else if (window.__restOk === false) el.textContent = '🔴 SDK တင်မရပါ · ဆာဗာလည်း မရောက်ဘူး';
+                }
+            });
+        }
+        function runRestCheck() {
+            try {
+                const base = (typeof firebaseConfig !== 'undefined' && firebaseConfig.databaseURL) ? firebaseConfig.databaseURL : '';
+                if (!base || base.indexOf('http') !== 0) return;
+                const ctrl = new AbortController();
+                const timer = setTimeout(() => { try { ctrl.abort(); } catch(e) {} }, 9000);
+                fetch(base + '/.json?shallow=true', { signal: ctrl.signal, cache: 'no-store' })
+                    .then(r => { clearTimeout(timer); window.__restOk = (r.status === 200); refreshPillDetail(); })
+                    .catch(() => { clearTimeout(timer); window.__restOk = false; refreshPillDetail(); });
+            } catch(e) { window.__restOk = false; refreshPillDetail(); }
         }
 
         const cloudSync = {
@@ -732,6 +761,7 @@
                 window.addEventListener('online', () => setConnStatus('connecting'));
             }
         } catch(e) { setConnStatus('sdkmissing'); }
+        try { runRestCheck(); } catch(e) {} // plain-HTTPS reachability probe
 
         function generateValidKey(deviceIdNum) {
             let num = parseInt(deviceIdNum, 10) || 1000;
