@@ -1635,6 +1635,7 @@
                         <div class="m-act-btn" onclick="openGyinge(${sIdNum})">ကြီးငယ်</div>
                         <div class="m-act-btn" onclick="openOverLimitModal(${sIdNum})">အကာစာရင်း</div>
                         <div class="m-act-btn" onclick="openAllTotalModal(${sIdNum})">ALL TOTAL</div>
+                        <div class="m-act-btn" onclick="copyLedgerTotal(${sIdNum})">📋 Copy Total</div>
                     </div>
                 </div>`;
             });
@@ -1796,6 +1797,49 @@
         }
         function closeCustomModal() { document.getElementById('customModal').style.display = 'none'; }
 
+        /* v221.5: Copy Ledger Total for shareholders (format: 00 - 5000,) */
+        function copyLedgerTotal(sessionId) {
+            let sid = Number(sessionId) || activeSessionId || (sessions.length > 0 ? Number(sessions[sessions.length - 1].id) : null);
+            let sessionItems = listData.filter(i => Number(i.sessionId) === Number(sid) || !i.sessionId);
+            let akanSessionItems = akanEntries.filter(i => (Number(i.sessionId) === Number(sid) || !i.sessionId) && i.batchNo);
+
+            let sums = {};
+            sessionItems.forEach(item => {
+                let n = (item.no || '').toString().trim();
+                let a = item.amt || item.amount || 0;
+                if(n) sums[n] = (sums[n] || 0) + a;
+            });
+            akanSessionItems.forEach(item => {
+                let n = (item.no || '').toString().trim();
+                let a = item.amt || item.amount || 0;
+                if(n && sums[n]) { sums[n] -= a; if(sums[n] < 0) sums[n] = 0; }
+            });
+
+            let keys = Object.keys(sums).filter(k => sums[k] > 0).sort();
+            if(keys.length === 0) { showMessage('❌ ကူးယူစရာ စာရင်း မရှိပါ'); return; }
+
+            let s = sessions.find(x => Number(x.id) === Number(sid));
+            let lines = keys.map(k => `${k} - ${sums[k].toLocaleString()},`);
+            let text = (s ? s.name + '\n' : '') + lines.join('\n');
+
+            if(navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(text).then(() => {
+                    showMessage(`✅ ${keys.length} ကွက် ကူးပြီးပြီ`);
+                }).catch(() => { fallbackCopyLedgerTotal(text, keys.length); });
+            } else {
+                fallbackCopyLedgerTotal(text, keys.length);
+            }
+        }
+        function fallbackCopyLedgerTotal(text, count) {
+            let ta = document.createElement('textarea');
+            ta.value = text;
+            ta.style.position = 'fixed'; ta.style.opacity = '0';
+            document.body.appendChild(ta);
+            ta.select();
+            try { document.execCommand('copy'); showMessage(`✅ ${count} ကွက် ကူးပြီးပြီ`); }
+            catch(e) { showMessage('❌ ကူးမရပါ'); }
+            document.body.removeChild(ta);
+        }
         function openAllTotalModal(sessionId) {
             activeSessionId = Number(sessionId) || activeSessionId || (sessions.length > 0 ? Number(sessions[sessions.length - 1].id) : null);
             
