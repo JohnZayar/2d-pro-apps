@@ -1633,7 +1633,7 @@
                         <div class="m-act-btn" onclick="openWinningForSession(${sIdNum})">ပေါက်သီး</div>
                         <div class="m-act-btn" onclick="openClosedNumbersModal(${sIdNum})">ဒိုင်ပိတ်ဂဏန်း</div>
                         <div class="m-act-btn" onclick="openLedger(${sIdNum})">လယ်ဂျာ</div>
-                        <div class="m-act-btn" onclick="openNumberHistory()">📈 ဂဏန်း မှတ်</div>
+                        <div class="m-act-btn" onclick="openNumberHistory()">📊 ကျန်ဂဏန်း</div>
                         <div class="m-act-btn" onclick="openAkanDainPage(${sIdNum})">အကန်ဒိုင်</div>
                         <div class="m-act-btn" onclick="openDailySummaryModal(${sIdNum})">Daily စာရင်းချုပ်</div>
                         <div class="m-act-btn" onclick="openGyinge(${sIdNum})">ကြီးငယ်</div>
@@ -1683,9 +1683,14 @@
                 // Show weeks from newest to oldest
                 weekKeys.reverse().forEach((wk, wi) => {
                     let nums = digitHistory[wk] || [];
+                    // Normalize: handle both old string format and new object format
+                    let entries = nums.map(e => {
+                        if(typeof e === 'string') return {num: e, day: '', time: ''};
+                        return e;
+                    });
                     let appeared = new Set();
-                    nums.forEach(wn => {
-                        (wn || '').split('').forEach(c => { if(c >= '0' && c <= '9') appeared.add(c); });
+                    entries.forEach(en => {
+                        (en.num || '').split('').forEach(c => { if(c >= '0' && c <= '9') appeared.add(c); });
                     });
 
                     let remaining = [];
@@ -1699,9 +1704,9 @@
 
                     // Rollover: show last week's remaining at start of this week
                     if(isCurrentWeek && weekKeys.length > 1) {
-                        let prevNums = digitHistory[weekKeys[1]] || [];
+                        let prevEntries = (digitHistory[weekKeys[1]] || []).map(e => typeof e === 'string' ? {num: e} : e);
                         let pAppeared = new Set();
-                        prevNums.forEach(wn => { (wn || '').split('').forEach(c => { if(c >= '0' && c <= '9') pAppeared.add(c); }); });
+                        prevEntries.forEach(en => { (en.num || '').split('').forEach(c => { if(c >= '0' && c <= '9') pAppeared.add(c); }); });
                         let pRemaining = [];
                         for(let i = 0; i <= 9; i++) if(!pAppeared.has(String(i))) pRemaining.push(i);
                         if(pRemaining.length > 0) {
@@ -1709,9 +1714,25 @@
                         }
                     }
 
-                    // Show winning numbers this week
-                    if(nums.length > 0) {
-                        html += `<div style="font-size:12px; color:#d1d5db; margin-bottom:6px; text-align:center;">ထွက်ပြီးသား: <b style="color:#f1c40f;">${nums.join(', ')}</b></div>`;
+                    // Show day-by-day (v221.9: Pho prefers this view)
+                    if(entries.length > 0) {
+                        let dayOrder = ['တနင်္လာ','အင်္ဂါ','ဗုဒ္ဓဟူး','ကြာသပတေး','သောကြာ','စနေ','တနင်္ဂနွေ'];
+                        let dayGroups = {};
+                        entries.forEach(en => {
+                            let dk = en.day || '—';
+                            if(!dayGroups[dk]) dayGroups[dk] = [];
+                            dayGroups[dk].push(en);
+                        });
+                        // Sort by day order
+                        let sortedDays = Object.keys(dayGroups).sort((a, b) => {
+                            let ai = dayOrder.indexOf(a); let bi = dayOrder.indexOf(b);
+                            if(ai === -1) ai = 99; if(bi === -1) bi = 99;
+                            return ai - bi;
+                        });
+                        sortedDays.forEach(dk => {
+                            let numStr = dayGroups[dk].map(en => `${en.time ? en.time + ' ' : ''}${en.num}`).join('  ');
+                            html += `<div style="font-size:13px; color:#d1d5db; margin-bottom:4px;"><b style="color:#f1c40f;">${dk}</b> &nbsp;${numStr}</div>`;
+                        });
                     }
 
                     // Remaining digits
@@ -1730,7 +1751,7 @@
                 html += `<div style="font-size:10px; color:#6b7280; text-align:center; margin-top:4px;">၁၀ ပတ် စာ သိမ်း — ၁၀ ပတ် ကျော်ရင် auto ဖျက်</div>`;
             }
 
-            openCustomModal('📈 ဂဏန်း မှတ်', html, false);
+            openCustomModal('📊 ကျန်ဂဏန်း', html, false);
         }
 
         function openOverLimitModal(sessionId) {
@@ -3476,10 +3497,21 @@
             if(num && num.length === 2 && currentSessionId) {
                 winningNumbers[Number(currentSessionId)] = num;
                 /* v221.8: also record in independent digit history (survives session delete) */
+                /* v221.9: store with day info for day-by-day display */
                 try {
                     let wk = getWeekMondayStr(new Date());
                     if(!digitHistory[wk]) digitHistory[wk] = [];
-                    if(!digitHistory[wk].includes(num)) digitHistory[wk].push(num);
+                    let s = sessions.find(x => Number(x.id) === Number(currentSessionId));
+                    let dayNames = ['တနင်္ဂနွေ','တနင်္လာ','အင်္ဂါ','ဗုဒ္ဓဟူး','ကြာသပတေး','သောကြာ','စနေ'];
+                    let dayName = dayNames[new Date().getDay()];
+                    let timeLabel = '';
+                    if(s && s.name) {
+                        if(s.name.includes('မနက်')) timeLabel = 'AM';
+                        else if(s.name.includes('ညနေ')) timeLabel = 'PM';
+                    }
+                    // Avoid duplicates (same num already recorded)
+                    let exists = digitHistory[wk].some(e => (typeof e === 'string' ? e : e.num) === num);
+                    if(!exists) digitHistory[wk].push({num: num, day: dayName, time: timeLabel});
                     pruneDigitHistory();
                     cloudSync.set('2d_digit_history', digitHistory, () => {});
                 } catch(e) {}
