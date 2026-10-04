@@ -1629,7 +1629,7 @@
                         <div class="m-act-btn" onclick="openWinningForSession(${sIdNum})">ပေါက်သီး</div>
                         <div class="m-act-btn" onclick="openClosedNumbersModal(${sIdNum})">ဒိုင်ပိတ်ဂဏန်း</div>
                         <div class="m-act-btn" onclick="openLedger(${sIdNum})">လယ်ဂျာ</div>
-                        <div class="m-act-btn" onclick="openSession(${sIdNum})">ဝင်မည်</div>
+                        <div class="m-act-btn" onclick="openNumberHistory()">📈 ဂဏန်း မှတ်</div>
                         <div class="m-act-btn" onclick="openAkanDainPage(${sIdNum})">အကန်ဒိုင်</div>
                         <div class="m-act-btn" onclick="openDailySummaryModal(${sIdNum})">Daily စာရင်းချုပ်</div>
                         <div class="m-act-btn" onclick="openGyinge(${sIdNum})">ကြီးငယ်</div>
@@ -1645,6 +1645,41 @@
         function openWinningForSession(sessionId) {
             activeSessionId = Number(sessionId);
             switchPage('Results');
+        }
+
+        /* v221.6: Number history - which numbers won how many times (from entered winning numbers) */
+        function openNumberHistory() {
+            let counts = {};
+            let sessionNames = {};
+            Object.keys(winningNumbers || {}).forEach(sid => {
+                let wn = (winningNumbers[sid] || '').toString().trim();
+                if(!wn) return;
+                counts[wn] = (counts[wn] || 0) + 1;
+                let s = sessions.find(x => Number(x.id) === Number(sid));
+                if(s) {
+                    if(!sessionNames[wn]) sessionNames[wn] = [];
+                    sessionNames[wn].push(s.name);
+                }
+            });
+
+            let keys = Object.keys(counts).sort((a, b) => counts[b] - counts[a]);
+            let html = `<div style="font-size:12px; color:#9ca3af; margin-bottom:8px; text-align:center;">ပေါက်ဖူးတဲ့ ဂဏန်း မှတ်တမ်း (ထည့်ထားတဲ့ ပေါက်သီး ကနေ)</div>`;
+
+            if(keys.length === 0) {
+                html += `<div style="text-align:center; color:#6b7280; padding:20px;">မှတ်တမ်း မရှိသေးပါ<br><span style="font-size:11px;">ပေါက်သီး ထည့်တဲ့ Session မှ ပေါ်မယ်</span></div>`;
+            } else {
+                html += `<div style="font-size:11px; color:#9ca3af; margin-bottom:6px; border-bottom:1px solid #374151; padding-bottom:4px; display:flex; justify-content:space-between;"><span><b>ဂဏန်း</b></span><span><b>အကြိမ်</b></span></div>`;
+                keys.forEach(k => {
+                    let names = (sessionNames[k] || []).slice(-3).join(', ');
+                    html += `<div style="display:flex; justify-content:space-between; align-items:center; padding:6px 0; border-bottom:1px dashed #374151; font-size:14px;">
+                        <span style="font-weight:bold; color:#f1c40f; font-size:18px;">${k}</span>
+                        <span style="color:#34d399; font-weight:bold;">${counts[k]} ခါ</span>
+                    </div>`;
+                    if(names) html += `<div style="font-size:10px; color:#6b7280; margin-bottom:4px;">${names}</div>`;
+                });
+            }
+
+            openCustomModal('📈 ဂဏန်း မှတ်', html, false);
         }
 
         function openOverLimitModal(sessionId) {
