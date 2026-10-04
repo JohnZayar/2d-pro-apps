@@ -433,8 +433,8 @@
                                 <button class="btn-modal-action" style="background:#38bdf8; color:#000; width:auto; padding:8px 16px; margin-top:0;" onclick="saveDevicePassword()">သိမ်း</button>
                             </div>
                         </div>
-                        <!-- v221: Pho's Master Device Approval — approve/revoke devices globally -->
-                        <div style="margin-bottom:12px; padding:12px; background:#111827; border-radius:8px; border:1px solid #f59e0b;">
+                        <!-- v221: Pho's Master Device Approval — HIDDEN by default, only Pho sees it -->
+                        <div id="masterApprovalSection" style="display:none; margin-bottom:12px; padding:12px; background:#111827; border-radius:8px; border:1px solid #f59e0b;">
                             <div style="font-size:13px; color:#fbbf24; margin-bottom:8px; font-weight:bold;">🛡️ Master Device Approval (Pho)</div>
                             <div style="font-size:11px; color:#9ca3af; margin-bottom:8px;">Buyer က Device ID ပို့လာရင် ဒီမှာ approve လုပ်ပါ။ Approve မလုပ်ရင် app ပွင့်မလာဘူး။</div>
                             <div style="display:flex; gap:8px; margin-bottom:8px;">
@@ -444,6 +444,9 @@
                             </div>
                             <div id="deviceApprovalList" style="font-size:12px; color:#d1d5db; max-height:200px; overflow-y:auto;"></div>
                             <button class="btn-modal-action" style="background:#374151; color:#d1d5db; margin-top:8px;" onclick="refreshDeviceApprovalList()">🔄 List ပြန်ကြည့်</button>
+                        </div>
+                        <div style="margin-bottom:12px; text-align:center;">
+                            <a href="javascript:void(0)" onclick="unlockMasterAdmin()" style="font-size:11px; color:#6b7280; text-decoration:underline;">🔧 Master Admin</a>
                         </div>
                         <button class="btn-modal-action" style="background:#f43f5e; color:#fff;" onclick="clearAllData()">အချက်အလက်အားလုံး ဖျက်မည် (Reset)</button>
                     </div>
@@ -1156,6 +1159,19 @@
             cloudSync.set('2d_config', cfg, (ok) => {
                 showMessage(ok === false ? "⚠️ Local သိမ်းပြီး — Cloud မရောက်သေးပါ" : "✅ Device Password သတ်မှတ်ပြီးပါပြီ");
             });
+        }
+
+        /* v221.2: Master Admin is hidden — only Pho can unlock with master password */
+        const MASTER_ADMIN_PASSWORD = 'pho2024master'; /* Pho: change this to your own! */
+        function unlockMasterAdmin() {
+            let pw = prompt('Master Admin Password:');
+            if (pw === MASTER_ADMIN_PASSWORD) {
+                document.getElementById('masterApprovalSection').style.display = 'block';
+                refreshDeviceApprovalList();
+                showMessage("✅ Master Admin ဖွင့်ပြီးပါပြီ");
+            } else if (pw !== null) {
+                showMessage("❌ Password မှားတယ်");
+            }
         }
 
         /* v221: Pho's Master Device Approval — global license control */
