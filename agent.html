@@ -1387,24 +1387,44 @@
         function openDigitalBoard() { document.getElementById('digitalBoardModal').style.display = 'flex'; }
         function closeDigitalBoard() { document.getElementById('digitalBoardModal').style.display = 'none'; }
 
+        /* v218.10: lag fix — single-pass save: no double-press, no redundant network reads,
+           lock check from local cache, first-response-wins on list_data, button locked during save */
+        let __agentSaving = false;
+        let __agentSaveToken = 0;
         function processDigitalBoardData() {
-            cloudSync.get('2d_sessions', (sessions) => {
-                sessions = sessions || [];
-                let currentSession = sessions.find(s => Number(s.id) === Number(activeSessionId));
+            if (__agentSaving) { showMessage("⏳ သိမ်းနေပါတယ်… ခဏစောင့်ပါ"); return; }
 
-                cloudSync.get('2d_winning', (winningNumbers) => {
-                    winningNumbers = winningNumbers || {};
-                    if(winningNumbers[activeSessionId] || (currentSession && isSessionTimeExpired(currentSession))) {
-                        showMessage("🔒 သတ်မှတ်ချိန် ကျော်လွန်သွားပြီ (သို့) ပွဲပိတ်သွားပြီဖြစ်၍ စာရင်းသွင်း၍မရပါ။");
-                        return;
-                    }
+            let textarea = document.getElementById('digitalBoardBox');
+            let text = textarea.value.trim();
+            if(!text) { showMessage("❌ စာရင်းထည့်ပါ။"); return; }
 
-                    let textarea = document.getElementById('digitalBoardBox');
-                    let text = textarea.value.trim();
-                    if(!text) { showMessage("❌ စာရင်းထည့်ပါ။"); return; }
+            /* Fast session-lock check from local cache — skips 2 network round-trips */
+            let _sessions = [], _winning = {};
+            try { _sessions = JSON.parse(safeGetItem('cache_' + tp('2d_sessions')) || '[]'); } catch(e) {}
+            try { _winning = JSON.parse(safeGetItem('cache_' + tp('2d_winning')) || '{}'); } catch(e) {}
+            let _curSession = _sessions.find(s => Number(s.id) === Number(activeSessionId));
+            if(_winning[activeSessionId] || (_curSession && isSessionTimeExpired(_curSession))) {
+                showMessage("🔒 သတ်မှတ်ချိန် ကျော်လွန်သွားပြီ (သို့) ပွဲပိတ်သွားပြီဖြစ်၍ စာရင်းသွင်း၍မရပါ။");
+                return;
+            }
 
-                    cloudSync.get('2d_list_data', (listData) => {
-                        listData = listData || [];
+            __agentSaving = true;
+            const myToken = ++__agentSaveToken;
+            let gotListData = false;
+            const saveBtn = document.querySelector('#digitalBoardModal .btn-save');
+            const _origBtnText = saveBtn ? saveBtn.textContent : 'Save';
+            if (saveBtn) { saveBtn.disabled = true; saveBtn.style.opacity = '0.5'; saveBtn.textContent = '⏳...'; }
+            showMessage("⏳ သိမ်းနေပါတယ်…");
+            const finishSave = () => {
+                if (myToken !== __agentSaveToken) return;
+                __agentSaving = false;
+                if (saveBtn) { saveBtn.disabled = false; saveBtn.style.opacity = ''; saveBtn.textContent = _origBtnText; }
+            };
+
+            cloudSync.get('2d_list_data', (listData) => {
+                if (myToken !== __agentSaveToken || gotListData) return; /* ignore stale/duplicate callbacks */
+                gotListData = true;
+                listData = listData || [];
                         let targetKey = `USER_${loggedAgent}`;
                         let subUser = document.getElementById('posSubUserSelect').value;
                         let subUserName = subUser.startsWith('SELF_') ? 'ကိုယ်တိုင်' : subUser;
@@ -1534,7 +1554,9 @@
                             }
                         });
 
-                        cloudSync.set('2d_list_data', listData, () => {
+                        cloudSync.set('2d_list_data', listData, (ok) => {
+                            if (myToken !== __agentSaveToken) return;
+                            finishSave();
                             if(unparsedLines.length > 0) {
                                 textarea.value = unparsedLines.join('\n');
                                 showMessage("⚠️ ပုံစံမမှန်သော/လက်မခံသော လိုင်းများကို ဘောက်စ်တွင် ပြန်ပြထားပါသည်။");
@@ -1542,12 +1564,10 @@
                                 textarea.value = '';
                                 closeDigitalBoard();
                                 renderPortalTable();
-                                showMessage("✅ ဝင်ရောက်သွားပါပြီ။");
+                                showMessage(ok === false ? "⚠️ Local သိမ်းပြီး — Cloud မရောက်သေးပါ" : "✅ ဝင်ရောက်သွားပါပြီ။");
                             }
                         });
                     });
-                });
-            });
         }
 
         function openReceiptModal() {
@@ -1595,7 +1615,11 @@
             navigator.clipboard.writeText(document.getElementById('receiptTextContent').innerText).then(() => { showMessage("✅ Copy ကူးပြီးပါပြီ။"); });
         }
 
+        /* v218.10: prevent double-press on receipt confirm */
+        let __confirmSaving = false;
         function saveAndConfirmBatch() {
+            if (__confirmSaving) { showMessage("⏳ သိမ်းနေပါတယ်… ခဏစောင့်ပါ"); return; }
+            __confirmSaving = true;
             cloudSync.get('2d_list_data', (listData) => {
                 listData = listData || [];
                 let targetKey = `USER_${loggedAgent}`;
@@ -1614,6 +1638,7 @@
                 });
 
                 cloudSync.set('2d_list_data', listData, () => {
+                    __confirmSaving = false;
                     closeReceiptModal();
                     switchPortalPage('Home');
                     showMessage(`✅ ${currentBatchName} ကို လယ်ဂျာထဲသို့ တရားဝင် အတည်ပြုထည့်သွင်းပြီးပါပြီ။`);
