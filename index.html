@@ -1781,12 +1781,17 @@
                 ${s ? s.name : ''} {${grandNet >= 0 ? '+' : ''}${grandNet.toLocaleString()}}
             </div>`;
 
-            openCustomModal('Daily စာရင်းချုပ်', html);
+            openCustomModal('Daily စာရင်းချုပ်', html, false);
         }
 
-        function openCustomModal(title, contentHtml) {
+        function openCustomModal(title, contentHtml, showUserSelect) {
             document.getElementById('customModalTitle').innerText = title;
             document.getElementById('customModalBody').innerHTML = contentHtml;
+            /* v221.4: hide the person dropdown unless explicitly needed (e.g. ALL TOTAL) */
+            let selWrap = document.getElementById('allTotalUserSelect');
+            if (selWrap && selWrap.parentElement) {
+                selWrap.parentElement.style.display = showUserSelect ? 'block' : 'none';
+            }
             document.getElementById('customModal').style.display = 'flex';
         }
         function closeCustomModal() { document.getElementById('customModal').style.display = 'none'; }
@@ -1820,7 +1825,7 @@
                 <div style="font-size:11px; color:#9ca3af; text-align:center; margin-top:2px;">ကွက်ရေ စုစုပေါင်း: ${totalCount} ကွက်</div>
                 <div style="text-align:center; color:#f1c40f; font-size:12px; margin-top:10px;">အထက်ပါ Dropdown မှ လူတစ်ဦးချင်းစီကို ရွေးချယ်၍ ၎င်းတို့၏ တစ်ကြိမ်စာ စာရင်းအကုန် ကြည့်ရှုနိုင်ပါသည်။</div>`;
             
-            openCustomModal('ALL TOTAL (စုစုပေါင်းချုပ်)', defaultHtml);
+            openCustomModal('ALL TOTAL (စုစုပေါင်းချုပ်)', defaultHtml, true);
         }
 
         function loadAllTotalUserContent() {
