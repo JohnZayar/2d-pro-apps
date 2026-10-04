@@ -433,6 +433,18 @@
                                 <button class="btn-modal-action" style="background:#38bdf8; color:#000; width:auto; padding:8px 16px; margin-top:0;" onclick="saveDevicePassword()">သိမ်း</button>
                             </div>
                         </div>
+                        <!-- v221: Pho's Master Device Approval — approve/revoke devices globally -->
+                        <div style="margin-bottom:12px; padding:12px; background:#111827; border-radius:8px; border:1px solid #f59e0b;">
+                            <div style="font-size:13px; color:#fbbf24; margin-bottom:8px; font-weight:bold;">🛡️ Master Device Approval (Pho)</div>
+                            <div style="font-size:11px; color:#9ca3af; margin-bottom:8px;">Buyer က Device ID ပို့လာရင် ဒီမှာ approve လုပ်ပါ။ Approve မလုပ်ရင် app ပွင့်မလာဘူး။</div>
+                            <div style="display:flex; gap:8px; margin-bottom:8px;">
+                                <input type="text" id="approveDeviceIdInput" placeholder="Device ID (ဥပမာ: 7842)" style="flex:1; background:#0b0f17; color:#fff; border:1px solid #374151; padding:8px; border-radius:6px; font-size:13px;">
+                                <input type="text" id="approveDeviceNoteInput" placeholder="မှတ် (ဥပမာ: Buyer နာမည်)" style="flex:1; background:#0b0f17; color:#fff; border:1px solid #374151; padding:8px; border-radius:6px; font-size:13px;">
+                                <button class="btn-modal-action" style="background:#22c55e; color:#fff; width:auto; padding:8px 16px; margin-top:0;" onclick="approveDevice()">✅</button>
+                            </div>
+                            <div id="deviceApprovalList" style="font-size:12px; color:#d1d5db; max-height:200px; overflow-y:auto;"></div>
+                            <button class="btn-modal-action" style="background:#374151; color:#d1d5db; margin-top:8px;" onclick="refreshDeviceApprovalList()">🔄 List ပြန်ကြည့်</button>
+                        </div>
                         <button class="btn-modal-action" style="background:#f43f5e; color:#fff;" onclick="clearAllData()">အချက်အလက်အားလုံး ဖျက်မည် (Reset)</button>
                     </div>
                 </div>
@@ -1065,13 +1077,31 @@
             let devEl = document.getElementById('myDeviceIDDisplay');
             if(devEl) devEl.innerText = "Device ID: " + deviceIdNum;
 
-            let isActivated = safeGetItem('2d_app_activated');
+            /* v221: Pho's master approval — most secure. Check local, then Firebase. */
+            let isApproved = safeGetItem('2d_device_approved');
+            let isActivated = safeGetItem('2d_app_activated'); /* backward compat with v220 password */
+            
             let lockEl = document.getElementById('lockScreenOverlay');
-            if (isActivated !== 'true') {
-                if(lockEl) lockEl.style.display = 'flex';
-            } else {
+            if (isApproved === 'true' || isActivated === 'true') {
                 if(lockEl) lockEl.style.display = 'none';
+            } else {
+                if(lockEl) lockEl.style.display = 'flex';
+                /* Check cloud approval in background */
+                checkDeviceApprovalFromCloud(deviceIdNum);
             }
+        }
+
+        function checkDeviceApprovalFromCloud(deviceId) {
+            try {
+                cloudSync.get('/deviceApprovals/' + deviceId, (data) => {
+                    if (data && data.approved === true) {
+                        safeSetItem('2d_device_approved', 'true');
+                        let lockEl = document.getElementById('lockScreenOverlay');
+                        if(lockEl) lockEl.style.display = 'none';
+                        showMessage("✅ Device အတည်ပြုပြီးပါပြီ — Pho က ခွင့်ပြုလိုက်ပါပြီ");
+                    }
+                });
+            } catch(e) {}
         }
 
         /* v220: cloud-based device password — admin sets it in Settings, per-Main.
@@ -1117,6 +1147,54 @@
             safeSetItem('2d_device_password', pw); /* local copy for this admin device */
             cloudSync.set('2d_config', cfg, (ok) => {
                 showMessage(ok === false ? "⚠️ Local သိမ်းပြီး — Cloud မရောက်သေးပါ" : "✅ Device Password သတ်မှတ်ပြီးပါပြီ");
+            });
+        }
+
+        /* v221: Pho's Master Device Approval — global license control */
+        function approveDevice() {
+            let devId = document.getElementById('approveDeviceIdInput').value.trim();
+            let note = document.getElementById('approveDeviceNoteInput').value.trim();
+            if (!devId) { showMessage("❌ Device ID ထည့်ပါ"); return; }
+            let record = { approved: true, note: note || '', approvedAt: new Date().toISOString(), approvedBy: 'pho' };
+            cloudSync.set('/deviceApprovals/' + devId, record, (ok) => {
+                if (ok === false) { showMessage("⚠️ Cloud မရောက်ပါ"); return; }
+                document.getElementById('approveDeviceIdInput').value = '';
+                document.getElementById('approveDeviceNoteInput').value = '';
+                showMessage("✅ Device " + devId + " approve ပြီးပါပြီ");
+                refreshDeviceApprovalList();
+            });
+        }
+
+        function revokeDevice(devId) {
+            if (!confirm('Device ' + devId + ' ကို ပိတ်မှာ သေချာပါသလား?')) return;
+            cloudSync.set('/deviceApprovals/' + devId, { approved: false, revokedAt: new Date().toISOString() }, (ok) => {
+                showMessage(ok === false ? "⚠️ Cloud မရောက်ပါ" : "🔒 Device " + devId + " ပိတ်လိုက်ပါပြီ");
+                refreshDeviceApprovalList();
+            });
+        }
+
+        function refreshDeviceApprovalList() {
+            let listEl = document.getElementById('deviceApprovalList');
+            if (!listEl) return;
+            listEl.innerHTML = '<div style="color:#9ca3af;">ဖတ်နေတယ်…</div>';
+            cloudSync.get('/deviceApprovals', (data) => {
+                data = data || {};
+                let keys = Object.keys(data);
+                if (keys.length === 0) {
+                    listEl.innerHTML = '<div style="color:#9ca3af;">Approved device မရှိသေးပါ</div>';
+                    return;
+                }
+                let html = '';
+                keys.forEach(k => {
+                    let d = data[k] || {};
+                    let status = d.approved ? '✅' : '🔒';
+                    let note = d.note ? ` (${d.note})` : '';
+                    html += `<div style="display:flex; justify-content:space-between; align-items:center; padding:6px; border-bottom:1px solid #374151;">
+                        <span>${status} <b>${k}</b>${note}</span>
+                        ${d.approved ? `<button onclick="revokeDevice('${k}')" style="background:#f43f5e; color:#fff; border:none; padding:4px 8px; border-radius:4px; cursor:pointer; font-size:11px;">ပိတ်</button>` : ''}
+                    </div>`;
+                });
+                listEl.innerHTML = html;
             });
         }
 

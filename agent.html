@@ -835,12 +835,28 @@
             
             document.getElementById('myDeviceIDDisplay').innerText = "Device ID: " + deviceIdNum;
 
-            let isActivated = safeGetItem('2d_app_activated');
-            if (isActivated !== 'true') {
-                document.getElementById('lockScreenOverlay').style.display = 'flex';
-            } else {
+            /* v221: Pho's master approval — most secure. Check local, then Firebase. */
+            let isApproved = safeGetItem('2d_device_approved');
+            let isActivated = safeGetItem('2d_app_activated'); /* backward compat */
+
+            if (isApproved === 'true' || isActivated === 'true') {
                 document.getElementById('lockScreenOverlay').style.display = 'none';
+            } else {
+                document.getElementById('lockScreenOverlay').style.display = 'flex';
+                checkDeviceApprovalFromCloud(deviceIdNum);
             }
+        }
+
+        function checkDeviceApprovalFromCloud(deviceId) {
+            try {
+                cloudSync.get('/deviceApprovals/' + deviceId, (data) => {
+                    if (data && data.approved === true) {
+                        safeSetItem('2d_device_approved', 'true');
+                        document.getElementById('lockScreenOverlay').style.display = 'none';
+                        showMessage("✅ Device အတည်ပြုပြီးပါပြီ");
+                    }
+                });
+            } catch(e) {}
         }
 
         /* v220: cloud-based device password — matches Master app */
