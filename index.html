@@ -1099,6 +1099,14 @@
                         let lockEl = document.getElementById('lockScreenOverlay');
                         if(lockEl) lockEl.style.display = 'none';
                         showMessage("✅ Device အတည်ပြုပြီးပါပြီ — Pho က ခွင့်ပြုလိုက်ပါပြီ");
+                    } else {
+                        /* v221.1: auto-register as pending — Pho sees it in admin panel */
+                        cloudSync.set('/deviceApprovals/' + deviceId, {
+                            approved: false,
+                            pending: true,
+                            firstSeen: new Date().toISOString(),
+                            userAgent: (navigator.userAgent || '').substring(0, 100)
+                        }, () => {});
                     }
                 });
             } catch(e) {}
@@ -1181,20 +1189,43 @@
                 data = data || {};
                 let keys = Object.keys(data);
                 if (keys.length === 0) {
-                    listEl.innerHTML = '<div style="color:#9ca3af;">Approved device မရှိသေးပါ</div>';
+                    listEl.innerHTML = '<div style="color:#9ca3af;">Device မရှိသေးပါ — device အသစ် ဖွင့်ရင် ဒီမှာ auto ပေါ်မယ်</div>';
                     return;
                 }
+                /* v221.1: show pending first */
+                keys.sort((a, b) => {
+                    let da = data[a] || {}, db = data[b] || {};
+                    if (!!da.approved === !!db.approved) return 0;
+                    return da.approved ? 1 : -1;
+                });
                 let html = '';
                 keys.forEach(k => {
                     let d = data[k] || {};
-                    let status = d.approved ? '✅' : '🔒';
+                    let statusIcon = d.approved ? '✅' : '⏳';
+                    let statusText = d.approved ? 'Approved' : 'Pending';
+                    let statusColor = d.approved ? '#22c55e' : '#f59e0b';
                     let note = d.note ? ` (${d.note})` : '';
-                    html += `<div style="display:flex; justify-content:space-between; align-items:center; padding:6px; border-bottom:1px solid #374151;">
-                        <span>${status} <b>${k}</b>${note}</span>
-                        ${d.approved ? `<button onclick="revokeDevice('${k}')" style="background:#f43f5e; color:#fff; border:none; padding:4px 8px; border-radius:4px; cursor:pointer; font-size:11px;">ပိတ်</button>` : ''}
+                    let time = d.firstSeen ? new Date(d.firstSeen).toLocaleString() : '';
+                    html += `<div style="display:flex; justify-content:space-between; align-items:center; padding:8px; border-bottom:1px solid #374151; background:${d.approved ? 'transparent' : 'rgba(245,158,11,0.1)'};">
+                        <div>
+                            <div>${statusIcon} <b>${k}</b>${note} <span style="color:${statusColor}; font-size:11px;">${statusText}</span></div>
+                            ${time ? `<div style="font-size:10px; color:#9ca3af;">${time}</div>` : ''}
+                        </div>
+                        <div style="display:flex; gap:4px;">
+                            ${!d.approved ? `<button onclick="approveDeviceById('${k}')" style="background:#22c55e; color:#fff; border:none; padding:6px 12px; border-radius:4px; cursor:pointer; font-size:12px; font-weight:bold;">Approve</button>` : ''}
+                            ${d.approved ? `<button onclick="revokeDevice('${k}')" style="background:#f43f5e; color:#fff; border:none; padding:4px 8px; border-radius:4px; cursor:pointer; font-size:11px;">ပိတ်</button>` : ''}
+                        </div>
                     </div>`;
                 });
                 listEl.innerHTML = html;
+            });
+        }
+
+        function approveDeviceById(devId) {
+            let note = prompt('Device ' + devId + ' အတွက် မှတ် (ဥပမာ: Buyer နာမည်):') || '';
+            cloudSync.set('/deviceApprovals/' + devId, { approved: true, pending: false, note: note, approvedAt: new Date().toISOString(), approvedBy: 'pho' }, (ok) => {
+                showMessage(ok === false ? "⚠️ Cloud မရောက်ပါ" : "✅ Device " + devId + " approve ပြီးပါပြီ");
+                refreshDeviceApprovalList();
             });
         }
 

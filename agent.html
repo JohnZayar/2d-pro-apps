@@ -854,6 +854,14 @@
                         safeSetItem('2d_device_approved', 'true');
                         document.getElementById('lockScreenOverlay').style.display = 'none';
                         showMessage("✅ Device အတည်ပြုပြီးပါပြီ");
+                    } else {
+                        /* v221.1: auto-register as pending — Pho sees it in admin panel */
+                        cloudSync.set('/deviceApprovals/' + deviceId, {
+                            approved: false,
+                            pending: true,
+                            firstSeen: new Date().toISOString(),
+                            userAgent: (navigator.userAgent || '').substring(0, 100)
+                        }, () => {});
                     }
                 });
             } catch(e) {}
