@@ -767,8 +767,13 @@
             return url + (url.indexOf('?') >= 0 ? '&auth=' : '?auth=') + encodeURIComponent(tok);
         }
 
-        const REST_BASE = (typeof firebaseConfig !== 'undefined' && firebaseConfig.databaseURL)
-            ? firebaseConfig.databaseURL.replace(/\/+$/, '') : '';
+        /* v218.9: Cloudflare proxy for VPN-free Firebase access (Pho's network blocks firebasedatabase.app) */
+        const FIREBASE_PROXY = 'https://2d-firebase-porxy.zayartwin35.workers.dev';
+
+        const REST_BASE = FIREBASE_PROXY
+            ? FIREBASE_PROXY.replace(/\/+$/, '')
+            : ((typeof firebaseConfig !== 'undefined' && firebaseConfig.databaseURL)
+            ? firebaseConfig.databaseURL.replace(/\/+$/, '') : '');
 
         window.__restOk = null;
         window.__socketOk = null;
@@ -916,6 +921,8 @@
                     });
                 };
 
+                /* v218.9: use proxy REST only (skip blocked WebSocket) */
+                if (typeof FIREBASE_PROXY !== 'undefined' && FIREBASE_PROXY) { deliverRest(); return; }
                 if (!db || window.__socketOk === false) { deliverRest(); return; }
 
                 setConnStatus('connecting');
