@@ -843,12 +843,25 @@
             }
         }
 
-        function verifyDynamicActivationKey() {
-            let deviceIdNum = safeGetItem('2d_device_id_num');
-            let correctKey = generateValidKey(deviceIdNum);
-            let enteredKey = document.getElementById('adminActivationKeyInput').value.trim();
+        /* v220: cloud-based device password — matches Master app */
+        function getDevicePassword() {
+            try {
+                const cfg = JSON.parse(safeGetItem('cache_' + tp('2d_config')) || '{}');
+                if (cfg.devicePassword) return cfg.devicePassword;
+            } catch(e) {}
+            return safeGetItem('2d_device_password') || null;
+        }
 
-            if (enteredKey === correctKey) {
+        function verifyDynamicActivationKey() {
+            let enteredKey = document.getElementById('adminActivationKeyInput').value.trim();
+            let correctKey = getDevicePassword();
+
+            if (!correctKey) {
+                let deviceIdNum = safeGetItem('2d_device_id_num');
+                correctKey = generateValidKey(deviceIdNum);
+            }
+
+            if (enteredKey === correctKey && enteredKey.length > 0) {
                 safeSetItem('2d_app_activated', 'true');
                 document.getElementById('lockScreenOverlay').style.display = 'none';
                 showMessage("✅ App အောင်မြင်စွာ ဖွင့်လှစ်ပြီးပါပြီ။");
@@ -1953,17 +1966,19 @@
             ensureAnonAuth(() => {
                 const linked = safeGetItem('2d_link_main');
                 if (linked) {
+                    /* v220: trust cached link code instantly — verify in background */
+                    setTenantId(linked);
+                    try { startCloudMonitor(); } catch(e) {}
+                    hideLinkOverlay();
+                    checkLoginState();
+                    restoreAgentState();
+                    /* Background verification */
                     verifyLinkCode(linked, (ok) => {
-                        if (ok) {
-                            setTenantId(linked);
-                            refreshAgentMapping();
-                            try { startCloudMonitor(); } catch(e) {}
-                            hideLinkOverlay();
-                            checkLoginState();
-                            restoreAgentState();
-                        } else {
+                        if (!ok) {
                             setTenantId(null);
                             showLinkOverlay('ချိတ်ဆက်ကုဒ် မမှန်တော့ပါ — ပြန်ထည့်ပါ။');
+                        } else {
+                            refreshAgentMapping();
                         }
                     });
                 } else {

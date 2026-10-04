@@ -424,6 +424,15 @@
 
                     <div class="info-card" style="background:#1a202c; border:1px solid #2d3748; border-radius:10px; padding:16px;">
                         <h3 style="color:#f43f5e; font-size:15px; margin-bottom:8px;">⚙️ စနစ် ဆက်တင်များ</h3>
+                        <!-- v220: Device Password for selling — admin sets it, buyers need it to activate -->
+                        <div style="margin-bottom:12px; padding:12px; background:#111827; border-radius:8px; border:1px solid #374151;">
+                            <div style="font-size:13px; color:#d1d5db; margin-bottom:8px; font-weight:bold;">🔒 Device Password (ရောင်းရန်)</div>
+                            <div style="font-size:11px; color:#9ca3af; margin-bottom:8px;">ဒီ password ကို သတ်မှတ်ထားရင် — app ကို device အသစ်မှာ ဖွင့်တိုင်း ဒီ password တောင်းမယ်။ Admin (သင်) ခွင့်ပြုမှ သုံးလို့ရမယ်။</div>
+                            <div style="display:flex; gap:8px;">
+                                <input type="text" id="devicePasswordInput" placeholder="Password သတ်မှတ်ပါ" style="flex:1; background:#0b0f17; color:#fff; border:1px solid #374151; padding:8px; border-radius:6px; font-size:13px;">
+                                <button class="btn-modal-action" style="background:#38bdf8; color:#000; width:auto; padding:8px 16px; margin-top:0;" onclick="saveDevicePassword()">သိမ်း</button>
+                            </div>
+                        </div>
                         <button class="btn-modal-action" style="background:#f43f5e; color:#fff;" onclick="clearAllData()">အချက်အလက်အားလုံး ဖျက်မည် (Reset)</button>
                     </div>
                 </div>
@@ -1065,18 +1074,50 @@
             }
         }
 
-        function verifyDynamicActivationKey() {
-            let deviceIdNum = safeGetItem('2d_device_id_num');
-            let correctKey = generateValidKey(deviceIdNum);
-            let enteredKey = document.getElementById('adminActivationKeyInput').value.trim();
+        /* v220: cloud-based device password — admin sets it in Settings, per-Main.
+           Replaces the insecure local formula. Backward compat: already-activated
+           devices (2d_app_activated=true) are unaffected. */
+        function getDevicePassword() {
+            /* Check local cache first (works offline) */
+            try {
+                const cfg = JSON.parse(safeGetItem('cache_' + tp('2d_config')) || '{}');
+                if (cfg.devicePassword) return cfg.devicePassword;
+            } catch(e) {}
+            /* Fallback to localStorage (set by admin on this device) */
+            return safeGetItem('2d_device_password') || null;
+        }
 
-            if (enteredKey === correctKey) {
+        function verifyDynamicActivationKey() {
+            let enteredKey = document.getElementById('adminActivationKeyInput').value.trim();
+            let correctKey = getDevicePassword();
+
+            if (!correctKey) {
+                /* No password set by admin — allow with old formula for backward compat */
+                let deviceIdNum = safeGetItem('2d_device_id_num');
+                correctKey = generateValidKey(deviceIdNum);
+            }
+
+            if (enteredKey === correctKey && enteredKey.length > 0) {
                 safeSetItem('2d_app_activated', 'true');
                 document.getElementById('lockScreenOverlay').style.display = 'none';
                 showMessage("✅ App အောင်မြင်စွာ ဖွင့်လှစ်ပြီးပါပြီ။");
             } else {
                 showMessage("❌ ထည့်သွင်းလိုက်သော Key မှန်ကန်မှု မရှိပါ။");
             }
+        }
+
+        /* Admin: set device password (Master Settings) */
+        function saveDevicePassword() {
+            let pw = document.getElementById('devicePasswordInput').value.trim();
+            if (!pw) { showMessage("❌ Password ထည့်ပါ"); return; }
+            let cfg = {};
+            try { cfg = JSON.parse(safeGetItem('cache_' + tp('2d_config')) || '{}'); } catch(e) {}
+            cfg.devicePassword = pw;
+            safeSetItem('cache_' + tp('2d_config'), JSON.stringify(cfg));
+            safeSetItem('2d_device_password', pw); /* local copy for this admin device */
+            cloudSync.set('2d_config', cfg, (ok) => {
+                showMessage(ok === false ? "⚠️ Local သိမ်းပြီး — Cloud မရောက်သေးပါ" : "✅ Device Password သတ်မှတ်ပြီးပါပြီ");
+            });
         }
 
         let STORAGE_KEY = '2d_list_data';
@@ -3314,7 +3355,8 @@
                         if (__booted) return;
                         __booted = true;
                         setTenantId(user.uid);
-                        try { await refreshIdToken(true); } catch(e) {}
+                        /* v220: don't block UI on token refresh — do it in background */
+                        refreshIdToken(true).catch(() => {});
                         try { startCloudMonitor(); } catch(e) {}
                         if (overlay) overlay.style.display = 'none';
                         updateMainInfoUI();
