@@ -1671,6 +1671,16 @@
             mon.setDate(d.getDate() + diff);
             return `${String(mon.getDate()).padStart(2,'0')}.${String(mon.getMonth()+1).padStart(2,'0')}.${mon.getFullYear()}`;
         }
+        /* v221.10: clear digit history (for test data cleanup) */
+        function clearDigitHistory() {
+            showConfirm("ဂဏန်း မှတ်တမ်း အကုန် ဖျက်မှာ သေချာပါသလား?", () => {
+                digitHistory = {};
+                cloudSync.set('2d_digit_history', digitHistory, () => {
+                    closeCustomModal();
+                    showMessage("✅ မှတ်တမ်း ရှင်းပြီးပြီ");
+                });
+            });
+        }
         /* v221.7: Weekly digit tracker - which digits 0-9 haven't appeared yet (Mon-Fri) */
         /* v221.8: Weekly digit tracker - uses independent digitHistory (survives session delete, 10 weeks) */
         function openNumberHistory() {
@@ -1749,6 +1759,7 @@
                     html += `</div>`;
                 });
                 html += `<div style="font-size:10px; color:#6b7280; text-align:center; margin-top:4px;">၁၀ ပတ် စာ သိမ်း — ၁၀ ပတ် ကျော်ရင် auto ဖျက်</div>`;
+                html += `<div style="text-align:center; margin-top:8px;"><button onclick="clearDigitHistory()" style="background:#7f1d1d; color:#fca5a5; border:1px solid #991b1b; padding:6px 12px; border-radius:6px; font-size:11px; cursor:pointer;">🗑️ မှတ်တမ်း ရှင်း</button></div>`;
             }
 
             openCustomModal('📊 ကျန်ဂဏန်း', html, false);
@@ -3498,22 +3509,26 @@
                 winningNumbers[Number(currentSessionId)] = num;
                 /* v221.8: also record in independent digit history (survives session delete) */
                 /* v221.9: store with day info for day-by-day display */
+                /* v221.10: skip Sat/Sun (Mon-Fri only) */
                 try {
-                    let wk = getWeekMondayStr(new Date());
-                    if(!digitHistory[wk]) digitHistory[wk] = [];
-                    let s = sessions.find(x => Number(x.id) === Number(currentSessionId));
-                    let dayNames = ['တနင်္ဂနွေ','တနင်္လာ','အင်္ဂါ','ဗုဒ္ဓဟူး','ကြာသပတေး','သောကြာ','စနေ'];
-                    let dayName = dayNames[new Date().getDay()];
-                    let timeLabel = '';
-                    if(s && s.name) {
-                        if(s.name.includes('မနက်')) timeLabel = 'AM';
-                        else if(s.name.includes('ညနေ')) timeLabel = 'PM';
+                    let todayDow = new Date().getDay();
+                    if(todayDow !== 0 && todayDow !== 6) {
+                        let wk = getWeekMondayStr(new Date());
+                        if(!digitHistory[wk]) digitHistory[wk] = [];
+                        let s = sessions.find(x => Number(x.id) === Number(currentSessionId));
+                        let dayNames = ['တနင်္ဂနွေ','တနင်္လာ','အင်္ဂါ','ဗုဒ္ဓဟူး','ကြာသပတေး','သောကြာ','စနေ'];
+                        let dayName = dayNames[todayDow];
+                        let timeLabel = '';
+                        if(s && s.name) {
+                            if(s.name.includes('မနက်')) timeLabel = 'AM';
+                            else if(s.name.includes('ညနေ')) timeLabel = 'PM';
+                        }
+                        // Avoid duplicates (same num already recorded)
+                        let exists = digitHistory[wk].some(e => (typeof e === 'string' ? e : e.num) === num);
+                        if(!exists) digitHistory[wk].push({num: num, day: dayName, time: timeLabel});
+                        pruneDigitHistory();
+                        cloudSync.set('2d_digit_history', digitHistory, () => {});
                     }
-                    // Avoid duplicates (same num already recorded)
-                    let exists = digitHistory[wk].some(e => (typeof e === 'string' ? e : e.num) === num);
-                    if(!exists) digitHistory[wk].push({num: num, day: dayName, time: timeLabel});
-                    pruneDigitHistory();
-                    cloudSync.set('2d_digit_history', digitHistory, () => {});
                 } catch(e) {}
                 cloudSync.set('2d_winning', winningNumbers, () => {
                     document.getElementById('winningResultDisplay').innerText = alertMsg;
