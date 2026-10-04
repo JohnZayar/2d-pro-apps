@@ -1425,6 +1425,7 @@
                 if (myToken !== __agentSaveToken || gotListData) return; /* ignore stale/duplicate callbacks */
                 gotListData = true;
                 listData = listData || [];
+                const _origLen = listData.length; /* v218.11: count new records for message */
                         let targetKey = `USER_${loggedAgent}`;
                         let subUser = document.getElementById('posSubUserSelect').value;
                         let subUserName = subUser.startsWith('SELF_') ? 'ကိုယ်တိုင်' : subUser;
@@ -1554,19 +1555,26 @@
                             }
                         });
 
+                        /* v218.11: truly optimistic — set() updates local cache instantly,
+                           so update UI right away; cloud sync continues in background */
+                        const _newCount = listData.length - _origLen;
                         cloudSync.set('2d_list_data', listData, (ok) => {
                             if (myToken !== __agentSaveToken) return;
-                            finishSave();
-                            if(unparsedLines.length > 0) {
-                                textarea.value = unparsedLines.join('\n');
-                                showMessage("⚠️ ပုံစံမမှန်သော/လက်မခံသော လိုင်းများကို ဘောက်စ်တွင် ပြန်ပြထားပါသည်။");
-                            } else {
-                                textarea.value = '';
-                                closeDigitalBoard();
-                                renderPortalTable();
-                                showMessage(ok === false ? "⚠️ Local သိမ်းပြီး — Cloud မရောက်သေးပါ" : "✅ ဝင်ရောက်သွားပါပြီ။");
-                            }
+                            if (ok === false) showMessage("⚠️ Cloud မရောက်သေးပါ — internet စစ်ပြီး ပြန်စမ်းပါ");
                         });
+                        /* Instant UI — do not wait for network */
+                        finishSave();
+                        if(unparsedLines.length > 0) {
+                            /* Pho's request: keep wrong lines visible for fixing, but show what WAS saved */
+                            textarea.value = unparsedLines.join('\n');
+                            renderPortalTable();
+                            showMessage(`✅ ${_newCount} ခု ဝင်ပြီ — ⚠️ ${unparsedLines.length} လိုင်း ပြင်ရန်`);
+                        } else {
+                            textarea.value = '';
+                            closeDigitalBoard();
+                            renderPortalTable();
+                            showMessage("✅ ဝင်ရောက်သွားပါပြီ။");
+                        }
                     });
         }
 
