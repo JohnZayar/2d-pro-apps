@@ -1498,7 +1498,7 @@
                 if(sums[n]) { sums[n] -= a; if(sums[n] < 0) sums[n] = 0; }
             });
 
-            let currentLimit = limitsData[activeSessionId] || 50000;
+            let currentLimit = limitsData['global'] || limitsData[activeSessionId] || 50000;
             let overLimitLines = [];
 
             for(let i=0; i<=99; i++) {
@@ -1539,7 +1539,7 @@
             let grandTotalAmt = totalUserAmt - totalAkanAmt;
             if(grandTotalAmt < 0) grandTotalAmt = 0;
 
-            let currentLimit = limitsData[activeSessionId] || 50000;
+            let currentLimit = limitsData['global'] || limitsData[activeSessionId] || 50000;
             let dividedCount = currentLimit > 0 ? (grandTotalAmt / currentLimit).toFixed(1) : 0;
 
             document.getElementById('pasteModalTitle').innerText = 'LIMIT သတ်မှတ်ရန်';
@@ -2248,7 +2248,7 @@
                 }
             });
 
-            let currentLimit = limitsData[currentSessionId] || 50000;
+            let currentLimit = limitsData['global'] || limitsData[currentSessionId] || 50000;
             let html = '';
             let grandTotal = 0;
             for(let i=0; i<=99; i++) {
@@ -2332,7 +2332,7 @@
                 }
             });
 
-            let currentLimit = limitsData[currentSessionId] || 50000;
+            let currentLimit = limitsData['global'] || limitsData[currentSessionId] || 50000;
             let activeEntries = [];
             for(let i=0; i<=99; i++) {
                 let numStr = i < 10 ? '0' + i : '' + i;
@@ -2669,7 +2669,7 @@
                 document.getElementById('pasteModalTitle').innerText = 'LIMIT သတ်မှတ်ရန်';
                 document.getElementById('pasteModalUserRow').style.display = 'none';
                 document.getElementById('limitInfoBox').style.display = 'block';
-                document.getElementById('pasteBox').value = limitsData[currentSessionId] || '50000';
+                document.getElementById('pasteBox').value = limitsData['global'] || limitsData[currentSessionId] || '50000';
             } else {
                 document.getElementById('pasteModalTitle').innerText = '2D ဂဏန်းများ ( အမြန်ထိုး )';
                 document.getElementById('pasteModalUserRow').style.display = 'block';
@@ -2727,7 +2727,8 @@
             if(modalTaskType === 'limit') {
                 let limitVal = document.getElementById('pasteBox').value.trim();
                 if(!limitVal) { showMessage("❌ Limit တန်ဖိုးထည့်ပါ"); return; }
-                limitsData[activeSessionId] = parseInt(convertMyanmarNumbers(limitVal), 10);
+                /* v219.1: global limit — applies app-wide, not per-session */
+                limitsData['global'] = parseInt(convertMyanmarNumbers(limitVal), 10);
                 cloudSync.set('2d_limits', limitsData, () => {
                     showMessage("✅ Limit သတ်မှတ်ပြီးပါပြီ");
                     closePasteModal();
