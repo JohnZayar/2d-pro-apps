@@ -1252,6 +1252,7 @@
         let akanEntries = [];
         let profiles = [];
         let winningNumbers = {};
+        let digitHistory = {}; /* v221.8: independent 10-week digit history, survives session delete */
         let limitsData = {};
         let closedNumbersData = {};
         
@@ -1273,6 +1274,8 @@
             try { akanEntries = JSON.parse(safeGetItem('cache_' + tp(AKAN_KEY)) || '[]'); } catch(e) { akanEntries = []; }
             try { profiles = JSON.parse(safeGetItem('cache_' + tp('2d_profiles')) || '[]'); } catch(e) { profiles = []; }
             try { winningNumbers = JSON.parse(safeGetItem('cache_' + tp('2d_winning')) || '{}'); } catch(e) { winningNumbers = {}; }
+            try { digitHistory = JSON.parse(safeGetItem('cache_' + tp('2d_digit_history')) || '{}'); } catch(e) { digitHistory = {}; }
+            pruneDigitHistory();
             try { limitsData = JSON.parse(safeGetItem('cache_' + tp('2d_limits')) || '{}'); } catch(e) { limitsData = {}; }
             try { closedNumbersData = JSON.parse(safeGetItem('cache_' + tp('2d_closed_numbers')) || '{}'); } catch(e) { closedNumbersData = {}; }
             if(sessions.length > 0 && !activeSessionId) {
@@ -1293,6 +1296,7 @@
             bgRefresh(AKAN_KEY, (v) => { akanEntries = v || []; });
             bgRefresh('2d_profiles', (v) => { profiles = v || []; });
             bgRefresh('2d_winning', (v) => { winningNumbers = v || {}; });
+            bgRefresh('2d_digit_history', (v) => { digitHistory = v || {}; pruneDigitHistory(); });
             bgRefresh('2d_limits', (v) => { limitsData = v || {}; });
             bgRefresh('2d_closed_numbers', (v) => { closedNumbersData = v || {}; });
         }
@@ -1648,77 +1652,40 @@
         }
 
         /* v221.6: Number history - which numbers won how many times (from entered winning numbers) */
+        /* v221.8: prune digit history to last 10 weeks */
+        function pruneDigitHistory() {
+            try {
+                let keys = Object.keys(digitHistory || {}).sort();
+                if(keys.length > 10) {
+                    let toDelete = keys.slice(0, keys.length - 10);
+                    toDelete.forEach(k => delete digitHistory[k]);
+                    // Save pruned version in background (don't block UI)
+                    try { cloudSync.set('2d_digit_history', digitHistory, () => {}); } catch(e) {}
+                }
+            } catch(e) {}
+        }
+        function getWeekMondayStr(d) {
+            let day = d.getDay();
+            let diff = (day === 0 ? -6 : 1 - day);
+            let mon = new Date(d);
+            mon.setDate(d.getDate() + diff);
+            return `${String(mon.getDate()).padStart(2,'0')}.${String(mon.getMonth()+1).padStart(2,'0')}.${mon.getFullYear()}`;
+        }
         /* v221.7: Weekly digit tracker - which digits 0-9 haven't appeared yet (Mon-Fri) */
+        /* v221.8: Weekly digit tracker - uses independent digitHistory (survives session delete, 10 weeks) */
         function openNumberHistory() {
-            // Parse session date "DD.MM.YYYY Day" -> Date object
-            function parseSessionDate(s) {
-                try {
-                    let dateStr = (s.date || s.name || '').substring(0, 10); // "DD.MM.YYYY"
-                    let parts = dateStr.split('.');
-                    if(parts.length !== 3) return null;
-                    return new Date(Number(parts[2]), Number(parts[1]) - 1, Number(parts[0]));
-                } catch(e) { return null; }
-            }
-            // Get Monday of the week for a date
-            function getMonday(d) {
-                let day = d.getDay(); // 0=Sun, 1=Mon...
-                let diff = (day === 0 ? -6 : 1 - day); // Monday offset
-                let mon = new Date(d);
-                mon.setDate(d.getDate() + diff);
-                mon.setHours(0, 0, 0, 0);
-                return mon;
-            }
-            function fmtDate(d) {
-                return `${String(d.getDate()).padStart(2,'0')}.${String(d.getMonth()+1).padStart(2,'0')}.${d.getFullYear()}`;
-            }
-
-            // Group winning numbers by week
-            let weeks = {}; // mondayStr -> { sessions: [{date, dayName, winNum, digits}] }
-            Object.keys(winningNumbers || {}).forEach(sid => {
-                let wn = (winningNumbers[sid] || '').toString().trim();
-                if(!wn || wn.length < 2) return;
-                let s = sessions.find(x => Number(x.id) === Number(sid));
-                if(!s) return;
-                let d = parseSessionDate(s);
-                if(!d) return;
-                let dayOfWeek = d.getDay();
-                if(dayOfWeek === 0 || dayOfWeek === 6) return; // Skip Sat/Sun (Mon-Fri only)
-
-                let mon = getMonday(d);
-                let monStr = fmtDate(mon);
-                if(!weeks[monStr]) weeks[monStr] = { monday: mon, entries: [] };
-
-                let dayNames = ['တနင်္ဂနွေ','တနင်္လာ','အင်္ဂါ','ဗုဒ္ဓဟူး','ကြာသပတေး','သောကြာ','စနေ'];
-                let digits = [...new Set(wn.split(''))].filter(c => c >= '0' && c <= '9');
-                weeks[monStr].entries.push({
-                    date: d,
-                    dayName: dayNames[dayOfWeek],
-                    winNum: wn,
-                    digits: digits,
-                    timeLabel: (s.name || '').includes('မနက်') ? 'AM' : ((s.name || '').includes('ညနေ') ? 'PM' : '')
-                });
-            });
-
-            let weekKeys = Object.keys(weeks).sort();
+            let weekKeys = Object.keys(digitHistory || {}).sort();
             let html = '';
 
             if(weekKeys.length === 0) {
-                html = `<div style="text-align:center; color:#6b7280; padding:20px;">မှတ်တမ်း မရှိသေးပါ<br><span style="font-size:11px;">ပေါက်သီး ထည့်တဲ့ Session မှ ပေါ်မယ်</span></div>`;
+                html = `<div style="text-align:center; color:#6b7280; padding:20px;">မှတ်တမ်း မရှိသေးပါ<br><span style="font-size:11px;">ပေါက်သီး ထည့်တာနဲ့ auto မှတ်မယ်</span></div>`;
             } else {
                 // Show weeks from newest to oldest
                 weekKeys.reverse().forEach((wk, wi) => {
-                    let w = weeks[wk];
-                    // Sort entries by date
-                    w.entries.sort((a, b) => a.date - b.date);
-
-                    // Track appeared digits day by day
+                    let nums = digitHistory[wk] || [];
                     let appeared = new Set();
-                    let dayGroups = {};
-                    w.entries.forEach(e => {
-                        let dk = fmtDate(e.date);
-                        if(!dayGroups[dk]) dayGroups[dk] = { dayName: e.dayName, nums: [] };
-                        dayGroups[dk].nums.push(e);
-                        e.digits.forEach(dg => appeared.add(dg));
+                    nums.forEach(wn => {
+                        (wn || '').split('').forEach(c => { if(c >= '0' && c <= '9') appeared.add(c); });
                     });
 
                     let remaining = [];
@@ -1732,10 +1699,9 @@
 
                     // Rollover: show last week's remaining at start of this week
                     if(isCurrentWeek && weekKeys.length > 1) {
-                        let prevWk = weekKeys[1];
-                        let pw = weeks[prevWk];
+                        let prevNums = digitHistory[weekKeys[1]] || [];
                         let pAppeared = new Set();
-                        pw.entries.forEach(e => e.digits.forEach(dg => pAppeared.add(dg)));
+                        prevNums.forEach(wn => { (wn || '').split('').forEach(c => { if(c >= '0' && c <= '9') pAppeared.add(c); }); });
                         let pRemaining = [];
                         for(let i = 0; i <= 9; i++) if(!pAppeared.has(String(i))) pRemaining.push(i);
                         if(pRemaining.length > 0) {
@@ -1743,12 +1709,10 @@
                         }
                     }
 
-                    // Day by day
-                    Object.keys(dayGroups).sort().forEach(dk => {
-                        let dg = dayGroups[dk];
-                        let numStr = dg.nums.map(n => `${n.timeLabel ? n.timeLabel + ' ' : ''}${n.winNum}`).join(', ');
-                        html += `<div style="font-size:12px; color:#d1d5db; margin-bottom:4px;"><b style="color:#f1c40f;">${dg.dayName}</b> ${numStr}</div>`;
-                    });
+                    // Show winning numbers this week
+                    if(nums.length > 0) {
+                        html += `<div style="font-size:12px; color:#d1d5db; margin-bottom:6px; text-align:center;">ထွက်ပြီးသား: <b style="color:#f1c40f;">${nums.join(', ')}</b></div>`;
+                    }
 
                     // Remaining digits
                     if(remaining.length > 0) {
@@ -1763,6 +1727,7 @@
 
                     html += `</div>`;
                 });
+                html += `<div style="font-size:10px; color:#6b7280; text-align:center; margin-top:4px;">၁၀ ပတ် စာ သိမ်း — ၁၀ ပတ် ကျော်ရင် auto ဖျက်</div>`;
             }
 
             openCustomModal('📈 ဂဏန်း မှတ်', html, false);
@@ -3510,6 +3475,14 @@
             let currentSessionId = activeSessionId || (sessions.length > 0 ? Number(sessions[sessions.length - 1].id) : null);
             if(num && num.length === 2 && currentSessionId) {
                 winningNumbers[Number(currentSessionId)] = num;
+                /* v221.8: also record in independent digit history (survives session delete) */
+                try {
+                    let wk = getWeekMondayStr(new Date());
+                    if(!digitHistory[wk]) digitHistory[wk] = [];
+                    if(!digitHistory[wk].includes(num)) digitHistory[wk].push(num);
+                    pruneDigitHistory();
+                    cloudSync.set('2d_digit_history', digitHistory, () => {});
+                } catch(e) {}
                 cloudSync.set('2d_winning', winningNumbers, () => {
                     document.getElementById('winningResultDisplay').innerText = alertMsg;
                     showMessage(alertMsg);
