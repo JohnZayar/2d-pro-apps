@@ -206,11 +206,22 @@
 
         /* v218.9: Cloudflare proxy for VPN-free Firebase access (Pho's network blocks firebasedatabase.app) */
         const FIREBASE_PROXY = 'https://2d-firebase-porxy.zayartwin35.workers.dev';
+        const DIRECT_BASE = (typeof firebaseConfig !== 'undefined' && firebaseConfig.databaseURL)
+            ? firebaseConfig.databaseURL.replace(/\/+$/, '') : '';
 
-        const REST_BASE = FIREBASE_PROXY
-            ? FIREBASE_PROXY.replace(/\/+$/, '')
-            : ((typeof firebaseConfig !== 'undefined' && firebaseConfig.databaseURL)
-            ? firebaseConfig.databaseURL.replace(/\/+$/, '') : '');
+        /* v218.12: smart base selection — test proxy at startup; if it serves
+           "Hello World!" (code not installed) or is unreachable, use direct URL (works with VPN) */
+        let __activeRestBase = DIRECT_BASE;
+        const REST_BASE = DIRECT_BASE; /* fallback for early calls */
+        function getRestBase() { return __activeRestBase || DIRECT_BASE; }
+        try {
+            fetch(FIREBASE_PROXY.replace(/\/+$/, '') + '/.json', { cache: 'no-store' })
+                .then(r => r.text()).then(t => {
+                    const isHello = /hello world/i.test(t.trim());
+                    __activeRestBase = isHello ? DIRECT_BASE : FIREBASE_PROXY.replace(/\/+$/, '');
+                    try { refreshPillDetail(); } catch(e) {}
+                }).catch(() => { __activeRestBase = DIRECT_BASE; });
+        } catch(e) { __activeRestBase = DIRECT_BASE; }
 
         window.__restOk = null;
         window.__socketOk = null;
@@ -219,10 +230,10 @@
             const pkey = tp(key);
             const go = (tok) => {
                 try {
-                    if (!REST_BASE) { window.__restOk = false; try { refreshPillDetail(); } catch(e) {} callback(null); return; }
+                    if (!getRestBase()) { window.__restOk = false; try { refreshPillDetail(); } catch(e) {} callback(null); return; }
                     const ctrl = new AbortController();
                     const timer = setTimeout(() => { try { ctrl.abort(); } catch(e) {} }, 12000);
-                    fetch(withAuth(REST_BASE + '/' + pkey + '.json', tok), { signal: ctrl.signal, cache: 'no-store' })
+                    fetch(withAuth(getRestBase() + '/' + pkey + '.json', tok), { signal: ctrl.signal, cache: 'no-store' })
                         .then(r => {
                             clearTimeout(timer);
                             window.__restOk = (r.status === 200);
@@ -240,10 +251,10 @@
             const pkey = tp(key);
             const go = (tok) => {
                 try {
-                    if (!REST_BASE) { if (callback) callback(false); return; }
+                    if (!getRestBase()) { if (callback) callback(false); return; }
                     const ctrl = new AbortController();
                     const timer = setTimeout(() => { try { ctrl.abort(); } catch(e) {} }, 12000);
-                    fetch(withAuth(REST_BASE + '/' + pkey + '.json', tok), {
+                    fetch(withAuth(getRestBase() + '/' + pkey + '.json', tok), {
                         method: 'PUT', signal: ctrl.signal, cache: 'no-store',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify(value === undefined ? null : value)
@@ -257,8 +268,8 @@
             // fullPath: already-resolved DB path (no tenant prefixing here)
             const go = (tok) => {
                 try {
-                    if (!REST_BASE) { if (callback) callback(false); return; }
-                    fetch(withAuth(REST_BASE + '/' + fullPath + '.json', tok), { method: 'DELETE', cache: 'no-store' })
+                    if (!getRestBase()) { if (callback) callback(false); return; }
+                    fetch(withAuth(getRestBase() + '/' + fullPath + '.json', tok), { method: 'DELETE', cache: 'no-store' })
                         .then(r => { if (callback) callback(r.ok); })
                         .catch(() => { if (callback) callback(false); });
                 } catch(e) { if (callback) callback(false); }
@@ -273,13 +284,13 @@
                 if (typeof cb === 'function') { try { cb(ok); } catch(e) {} }
             };
             try {
-                if (!REST_BASE) { done(false); return; }
+                if (!getRestBase()) { done(false); return; }
                 const target = __tenantId ? ('mains/' + __tenantId + '/public') : '';
                 const urlPath = target ? ('/' + target + '.json') : '/.json';
                 const ctrl = new AbortController();
                 const timer = setTimeout(() => { try { ctrl.abort(); } catch(e) {} }, 9000);
                 const go = (tok) => {
-                    fetch(withAuth(REST_BASE + urlPath + '?shallow=true', tok), { signal: ctrl.signal, cache: 'no-store' })
+                    fetch(withAuth(getRestBase() + urlPath + '?shallow=true', tok), { signal: ctrl.signal, cache: 'no-store' })
                         .then(r => { clearTimeout(timer); done(r.status === 200); })
                         .catch(() => { clearTimeout(timer); done(false); });
                 };
@@ -347,7 +358,7 @@
                 }
 
                 const deliverRest = () => {
-                    if (!REST_BASE) { if (!answered) { answered = true; finish(null); } return; }
+                    if (!getRestBase()) { if (!answered) { answered = true; finish(null); } return; }
                     setConnStatus(window.__restOk === false ? 'offline' : 'restmode');
                     restGet(key, (val) => {
                         if (val !== null && val !== undefined) {
