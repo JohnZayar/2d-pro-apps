@@ -441,6 +441,41 @@
             }
         };
 
+        /* v219: LocalDB — synchronous local-first data access.
+           UI reads from here INSTANTLY (memory → localStorage); cloud sync
+           happens in background via cloudSync. No network wait for UI. */
+        const LocalDB = {
+            _mem: {},
+            get(key, fallback) {
+                if (key in this._mem) return this._mem[key] !== null ? this._mem[key] : fallback;
+                try {
+                    const raw = safeGetItem('cache_' + tp(key));
+                    const val = raw ? JSON.parse(raw) : fallback;
+                    this._mem[key] = val;
+                    return val;
+                } catch(e) { return fallback; }
+            },
+            set(key, value) {
+                this._mem[key] = value;
+                try { safeSetItem('cache_' + tp(key), JSON.stringify(value)); } catch(e) {}
+                /* Background cloud sync — fire and forget */
+                try { cloudSync.set(key, value, () => {}); } catch(e) {}
+            },
+            /* Pull fresh data from cloud in background, update local + re-render */
+            refresh(key, onDone) {
+                try {
+                    cloudSync.get(key, (val) => {
+                        if (val !== null && val !== undefined) {
+                            this._mem[key] = val;
+                            try { safeSetItem('cache_' + tp(key), JSON.stringify(val)); } catch(e) {}
+                        }
+                        if (onDone) { try { onDone(this.get(key)); } catch(e) {} }
+                    });
+                } catch(e) { if (onDone) { try { onDone(this.get(key)); } catch(e2) {} } }
+            },
+            invalidate(key) { try { delete this._mem[key]; } catch(e) {} }
+        };
+
         /* Realtime socket monitor + REST reachability. */
         let __cloudWasOnline = false;
         function resyncCloudData() {
@@ -1356,10 +1391,11 @@
             });
         }
 
+        /* v219: local-first — read from LocalDB instantly, refresh in background */
         function renderPortalTable() {
             if(!loggedAgent) return;
-            cloudSync.get('2d_list_data', (listData) => {
-                listData = listData || [];
+            const renderFromLocal = () => {
+                let listData = LocalDB.get('2d_list_data', []) || [];
                 let filtered = listData.filter(i => Number(i.sessionId) === Number(activeSessionId) && i.target === `USER_${loggedAgent}` && !i.batchNo);
                 let totalAmt = filtered.reduce((sum, i) => sum + i.amt, 0);
 
@@ -1378,21 +1414,21 @@
                     html += `<tr class="lp-row" data-rid="${item.id}"><td>${displayName}</td><td><b>${item.no}</b></td><td>${item.amt.toLocaleString()} ကျပ်</td><td style="text-align:center;"><button style="background:none; border:none; color:#f43f5e; cursor:pointer;" onclick="deletePortalItem(${item.id})">🗑️</button></td></tr>`;
                 });
                 tbody.innerHTML = html;
-            });
+            };
+            renderFromLocal(); /* instant */
+            LocalDB.refresh('2d_list_data', renderFromLocal); /* background update */
         }
 
         function deletePortalItem(itemId) {
-            cloudSync.get('2d_list_data', (listData) => {
-                listData = listData || [];
-                let idx = listData.findIndex(i => Number(i.id) === Number(itemId));
-                if(idx !== -1) {
-                    listData.splice(idx, 1);
-                    cloudSync.set('2d_list_data', listData, () => {
-                        renderPortalTable();
-                        showMessage("✅ ဖျက်ပြီးပါပြီ။");
-                    });
-                }
-            });
+            /* v219: local-first delete */
+            let listData = LocalDB.get('2d_list_data', []) || [];
+            let idx = listData.findIndex(i => Number(i.id) === Number(itemId));
+            if(idx !== -1) {
+                listData.splice(idx, 1);
+                LocalDB.set('2d_list_data', listData);
+                renderPortalTable();
+                showMessage("✅ ဖျက်ပြီးပါပြီ။");
+            }
         }
 
         function openDigitalBoard() { document.getElementById('digitalBoardModal').style.display = 'flex'; }
@@ -1421,7 +1457,6 @@
 
             __agentSaving = true;
             const myToken = ++__agentSaveToken;
-            let gotListData = false;
             const saveBtn = document.querySelector('#digitalBoardModal .btn-save');
             const _origBtnText = saveBtn ? saveBtn.textContent : 'Save';
             if (saveBtn) { saveBtn.disabled = true; saveBtn.style.opacity = '0.5'; saveBtn.textContent = '⏳...'; }
@@ -1432,11 +1467,10 @@
                 if (saveBtn) { saveBtn.disabled = false; saveBtn.style.opacity = ''; saveBtn.textContent = _origBtnText; }
             };
 
-            cloudSync.get('2d_list_data', (listData) => {
-                if (myToken !== __agentSaveToken || gotListData) return; /* ignore stale/duplicate callbacks */
-                gotListData = true;
-                listData = listData || [];
-                const _origLen = listData.length; /* v218.11: count new records for message */
+            /* v219: fully synchronous local-first — no network wait at all */
+            if (myToken !== __agentSaveToken) return;
+            let listData = LocalDB.get('2d_list_data', []) || [];
+            const _origLen = listData.length; /* v218.11: count new records for message */
                         let targetKey = `USER_${loggedAgent}`;
                         let subUser = document.getElementById('posSubUserSelect').value;
                         let subUserName = subUser.startsWith('SELF_') ? 'ကိုယ်တိုင်' : subUser;
@@ -1566,13 +1600,9 @@
                             }
                         });
 
-                        /* v218.11: truly optimistic — set() updates local cache instantly,
-                           so update UI right away; cloud sync continues in background */
+                        /* v219: LocalDB.set writes locally instantly + syncs to cloud in background */
                         const _newCount = listData.length - _origLen;
-                        cloudSync.set('2d_list_data', listData, (ok) => {
-                            if (myToken !== __agentSaveToken) return;
-                            if (ok === false) showMessage("⚠️ Cloud မရောက်သေးပါ — internet စစ်ပြီး ပြန်စမ်းပါ");
-                        });
+                        LocalDB.set('2d_list_data', listData);
                         /* Instant UI — do not wait for network */
                         finishSave();
                         if(unparsedLines.length > 0) {
@@ -1586,7 +1616,6 @@
                             renderPortalTable();
                             showMessage("✅ ဝင်ရောက်သွားပါပြီ။");
                         }
-                    });
         }
 
         function openReceiptModal() {
@@ -1639,30 +1668,28 @@
         function saveAndConfirmBatch() {
             if (__confirmSaving) { showMessage("⏳ သိမ်းနေပါတယ်… ခဏစောင့်ပါ"); return; }
             __confirmSaving = true;
-            cloudSync.get('2d_list_data', (listData) => {
-                listData = listData || [];
-                let targetKey = `USER_${loggedAgent}`;
+            /* v219: local-first — instant, no network wait */
+            let listData = LocalDB.get('2d_list_data', []) || [];
+            let targetKey = `USER_${loggedAgent}`;
 
-                let existingUserItems = listData.filter(i => Number(i.sessionId) === Number(activeSessionId) && i.target === targetKey && i.batchNo);
-                let batchCount = 1, batchKeys = new Set(existingUserItems.map(i => i.batchNo));
-                while(batchKeys.has(`No-${batchCount}`)) { batchCount++; }
+            let existingUserItems = listData.filter(i => Number(i.sessionId) === Number(activeSessionId) && i.target === targetKey && i.batchNo);
+            let batchCount = 1, batchKeys = new Set(existingUserItems.map(i => i.batchNo));
+            while(batchKeys.has(`No-${batchCount}`)) { batchCount++; }
 
-                let currentBatchName = `No-${batchCount}`;
-                let nowTime = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+            let currentBatchName = `No-${batchCount}`;
+            let nowTime = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
 
-                listData.forEach(item => {
-                    if(Number(item.sessionId) === Number(activeSessionId) && item.target === targetKey && !item.batchNo) {
-                        item.batchNo = currentBatchName; item.time = nowTime;
-                    }
-                });
-
-                cloudSync.set('2d_list_data', listData, () => {
-                    __confirmSaving = false;
-                    closeReceiptModal();
-                    switchPortalPage('Home');
-                    showMessage(`✅ ${currentBatchName} ကို လယ်ဂျာထဲသို့ တရားဝင် အတည်ပြုထည့်သွင်းပြီးပါပြီ။`);
-                });
+            listData.forEach(item => {
+                if(Number(item.sessionId) === Number(activeSessionId) && item.target === targetKey && !item.batchNo) {
+                    item.batchNo = currentBatchName; item.time = nowTime;
+                }
             });
+
+            LocalDB.set('2d_list_data', listData);
+            __confirmSaving = false;
+            closeReceiptModal();
+            switchPortalPage('Home');
+            showMessage(`✅ ${currentBatchName} ကို လယ်ဂျာထဲသို့ တရားဝင် အတည်ပြုထည့်သွင်းပြီးပါပြီ။`);
         }
 
         function renderAgentHistory() {

@@ -1094,38 +1094,41 @@
         let modalTaskType = 'paste';
         let isDataLoaded = false;
 
+        /* v219: local-first — load from cache INSTANTLY, refresh from network in background.
+           UI renders immediately; cloud sync happens silently. */
         function loadCloudData(callback) {
             if (isDataLoaded) {
                 if(callback) callback();
                 return;
             }
-            cloudSync.get('2d_sessions', (s) => {
-                sessions = s || [];
-                cloudSync.get(STORAGE_KEY, (l) => {
-                    listData = l || [];
-                    cloudSync.get(AKAN_KEY, (ak) => {
-                        akanEntries = ak || [];
-                        cloudSync.get('2d_profiles', (p) => {
-                            profiles = p || [];
-                            cloudSync.get('2d_winning', (w) => {
-                                winningNumbers = w || {};
-                                cloudSync.get('2d_limits', (lim) => {
-                                    limitsData = lim || {};
-                                    cloudSync.get('2d_closed_numbers', (cls) => {
-                                        closedNumbersData = cls || {};
-                                        if(sessions.length > 0 && !activeSessionId) {
-                                            activeSessionId = Number(sessions[sessions.length - 1].id);
-                                        }
-                                        isDataLoaded = true;
-                                        startRealtimeSync();
-                                        if(callback) callback();
-                                    });
-                                });
-                            });
-                        });
-                    });
+            /* Step 1: Load everything from local cache synchronously — instant */
+            try { sessions = JSON.parse(safeGetItem('cache_' + tp('2d_sessions')) || '[]'); } catch(e) { sessions = []; }
+            try { listData = JSON.parse(safeGetItem('cache_' + tp(STORAGE_KEY)) || '[]'); } catch(e) { listData = []; }
+            try { akanEntries = JSON.parse(safeGetItem('cache_' + tp(AKAN_KEY)) || '[]'); } catch(e) { akanEntries = []; }
+            try { profiles = JSON.parse(safeGetItem('cache_' + tp('2d_profiles')) || '[]'); } catch(e) { profiles = []; }
+            try { winningNumbers = JSON.parse(safeGetItem('cache_' + tp('2d_winning')) || '{}'); } catch(e) { winningNumbers = {}; }
+            try { limitsData = JSON.parse(safeGetItem('cache_' + tp('2d_limits')) || '{}'); } catch(e) { limitsData = {}; }
+            try { closedNumbersData = JSON.parse(safeGetItem('cache_' + tp('2d_closed_numbers')) || '{}'); } catch(e) { closedNumbersData = {}; }
+            if(sessions.length > 0 && !activeSessionId) {
+                activeSessionId = Number(sessions[sessions.length - 1].id);
+            }
+            isDataLoaded = true;
+            if(callback) callback(); /* UI renders NOW — no network wait */
+            startRealtimeSync(); /* background: live updates + REST polling */
+
+            /* Step 2: Refresh from cloud in background (parallel, not sequential) */
+            const bgRefresh = (key, apply) => {
+                cloudSync.get(key, (v) => {
+                    if (v !== null && v !== undefined) { apply(v); refreshCurrentView(); }
                 });
-            });
+            };
+            bgRefresh('2d_sessions', (v) => { sessions = v || []; });
+            bgRefresh(STORAGE_KEY, (v) => { listData = v || []; });
+            bgRefresh(AKAN_KEY, (v) => { akanEntries = v || []; });
+            bgRefresh('2d_profiles', (v) => { profiles = v || []; });
+            bgRefresh('2d_winning', (v) => { winningNumbers = v || {}; });
+            bgRefresh('2d_limits', (v) => { limitsData = v || {}; });
+            bgRefresh('2d_closed_numbers', (v) => { closedNumbersData = v || {}; });
         }
 
         // Keeps timing-critical data (session times, winning numbers, closed/lock status, limits)
